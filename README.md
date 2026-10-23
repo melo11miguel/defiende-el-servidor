@@ -8,7 +8,7 @@ Curso MLOps, Universidad Externado de Colombia (2026-II).
 
 ## Pregunta central
 
-¿Puede otra persona comprender y reproducir mi solución con la evidencia que entrego?
+¿Puede otra persona comprender y reproducir nuestra solución con la evidencia que entregamos?
 
 ## Objetivo
 
