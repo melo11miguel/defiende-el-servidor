@@ -37,11 +37,17 @@
         <button data-mu="0.5">☂ Mojado</button>
       </div>
     </div>
-    <label class="campo">Semilla
-      <input id="inp-semilla" type="number" value="0" min="0" max="9999">
-    </label>
-    <button id="btn-correr" class="primario">▶ Correr episodio</button>
-    <p class="nota">La física corre en Python. Este visor solo dibuja el estado del simulador.</p>
+    <div class="campo">Parámetros del experimento
+      <div id="parametros" class="parametros"></div>
+    </div>
+    <div class="fila-semilla">
+      <label class="campo">Semilla
+        <input id="inp-semilla" type="number" value="0" min="0" max="9999">
+      </label>
+      <button id="btn-azar" title="Sortear parámetros y semilla dentro de los rangos de la ficha">🎲 Aleatorio</button>
+    </div>
+    <button id="btn-correr" class="primario">▶ Correr experimento</button>
+    <p class="nota">Cada corrida es una simulación nueva en Python. Mismos parámetros y semilla → mismo resultado (reproducible).</p>
   </section>
 
   <!-- Cámaras -->
@@ -51,6 +57,7 @@
     <button data-cam="aerea" title="3">Aérea</button>
     <button data-cam="cabina" title="4">Cabina</button>
     <button data-cam="libre" title="5">Libre</button>
+    <button id="btn-paneles" title="H: ocultar/mostrar paneles">👁</button>
   </nav>
 
   <!-- Minimapa -->
@@ -60,8 +67,18 @@
 
   <!-- Telemetría -->
   <aside id="telemetria" class="vidrio">
+    <div class="pestanas">
+      <button data-tab="tel" class="activo">Telemetría</button>
+      <button data-tab="exp">Experimentos <span id="n-exp" class="contador">0</span></button>
+    </div>
+
+    <div id="tab-exp" class="oculto">
+      <div id="lista-exp" class="lista-exp"><p class="vacio">Corre un experimento para empezar el registro.</p></div>
+    </div>
+
+    <div id="tab-tel">
     <div class="fila-titulo">
-      <span>TELEMETRÍA</span>
+      <span id="t-experimento">EXPERIMENTO #—</span>
       <span id="estado" class="pastilla ok">● EN PISTA</span>
     </div>
 
@@ -86,6 +103,7 @@
 
     <small class="etiqueta">Desvío del centro <span id="t-desvio" class="mono">+0.0 m</span></small>
     <div class="carril"><div class="borde-izq"></div><div class="borde-der"></div><div id="t-desvio-punto"></div></div>
+    </div>
   </aside>
 
   <!-- Instrumentos -->

@@ -31,6 +31,29 @@ def _r(v, n=3):
     return round(float(v), n)
 
 
+# Parámetros que se pueden variar por experimento: (mínimo, máximo, paso, base).
+# Son los rangos de la ficha (docs/ambiente-v0.1.md, Variables y unidades).
+RANGOS = {
+    "ancho": (6.0, 12.0, 0.5, 8.0),  # track_width (m)
+    "mu": (0.4, 1.0, 0.05, 0.9),  # adherencia del asfalto
+    "a_max": (2.0, 6.0, 0.5, 4.0),  # m/s²
+    "r_max": (10.0, 40.0, 1.0, 20.0),  # alcance de sensores (m)
+}
+CAMPO_CFG = {"ancho": "track_width", "mu": "mu", "a_max": "a_max", "r_max": "r_max"}
+EXPERIMENTOS = []  # registro de la sesión (en memoria)
+
+
+def leer_parametros(q):
+    """Valida los parámetros del experimento y los recorta a los rangos de la ficha."""
+    p = {}
+    for k, (lo, hi, _, base) in RANGOS.items():
+        try:
+            p[k] = min(max(float(q.get(k, base)), lo), hi)
+        except ValueError:
+            p[k] = base
+    return p
+
+
 def datos_pista():
     cfg = RallyConfig()
     centro = []
@@ -59,11 +82,14 @@ def datos_pista():
         "dt": cfg.dt,
         "max_t": cfg.max_steps * cfg.dt,
         "delta_max": math.radians(cfg.delta_max_deg),
+        "rangos": {k: {"min": lo, "max": hi, "paso": st, "base": b}
+                   for k, (lo, hi, st, b) in RANGOS.items()},
     }
 
 
-def correr_episodio(piloto="experto", mu=0.9, semilla=0):
-    env = AutonomousRallyEnv(mu=mu)
+def correr_episodio(piloto="experto", semilla=0, **params):
+    params = leer_parametros(params)
+    env = AutonomousRallyEnv(**{CAMPO_CFG[k]: v for k, v in params.items()})
     pol = policies.crear(piloto, semilla)
     obs, info = env.reset(seed=semilla)
     total = 0.0
@@ -90,9 +116,11 @@ def correr_episodio(piloto="experto", mu=0.9, semilla=0):
         frames.append(frame(obs, info, accion, r))
         done = term or trunc
     return {
-        "piloto": piloto, "mu": mu, "semilla": semilla,
+        "piloto": piloto, "semilla": semilla, "params": params,
         "resultado": info["outcome"], "tiempo": _r(info["t"], 2), "recompensa": _r(total, 2),
-        "salidas": info["off_track_events"], "frames": frames,
+        "salidas": info["off_track_events"],
+        "progreso": _r(max(info["s_best"], 0) / track.LAP * 100, 1),
+        "frames": frames,
     }
 
 
@@ -125,19 +153,26 @@ class Handler(SimpleHTTPRequestHandler):
             if piloto not in policies.POLITICAS:
                 self.send_error(400, "piloto desconocido")
                 return
-            mu = min(max(float(q.get("mu", 0.9)), 0.1), 1.2)
-            semilla = int(q.get("semilla", 0))
+            try:
+                semilla = int(q.get("semilla", 0))
+            except ValueError:
+                semilla = 0
             t0 = time.perf_counter()
-            ep = correr_episodio(piloto, mu, semilla)
+            ep = correr_episodio(piloto, semilla, **{k: q[k] for k in RANGOS if k in q})
             ms = (time.perf_counter() - t0) * 1000
+            p = ep["params"]
+            ep["id"] = len(EXPERIMENTOS) + 1
+            EXPERIMENTOS.append({k: v for k, v in ep.items() if k != "frames"})
             color = "green" if ep["resultado"] == "exito" else "red"
             console.print(
-                f"[grey50]{time.strftime('%H:%M:%S')}[/]  [bold]{piloto:9s}[/] "
-                f"{'☀ seco  ' if mu >= 0.75 else '☂ mojado'}  semilla {semilla:<3d} → "
-                f"[bold {color}]{ep['resultado']:9s}[/] {ep['tiempo']:5.1f} s  "
-                f"recompensa {ep['recompensa']:+7.1f}  [grey50]({len(ep['frames'])} pasos, {ms:.0f} ms)[/]"
+                f"[grey50]#{ep['id']:<3d}{time.strftime('%H:%M:%S')}[/]  [bold]{piloto:9s}[/] "
+                f"μ={p['mu']:.2f} ancho={p['ancho']:4.1f} m a={p['a_max']:.1f} sensor={p['r_max']:2.0f} m "
+                f"semilla {semilla:<4d}→ [bold {color}]{ep['resultado']:9s}[/] {ep['tiempo']:5.1f} s  "
+                f"recompensa {ep['recompensa']:+7.1f}  [grey50]({ms:.0f} ms)[/]"
             )
             return self._json(ep)
+        if url.path == "/api/experimentos":
+            return self._json(EXPERIMENTOS)
         return super().do_GET()
 
 

@@ -13,6 +13,7 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const params = new URLSearchParams(location.search);
 
 let pista, ep = null;
+const alcance = () => (ep ? ep.params.r_max : pista.rayos.alcance);
 let reproduciendo = true, velocidad = 1, tiempo = 0, camara = params.get("cam") || "persecucion";
 let mu = parseFloat(params.get("mu") || "0.9");
 
@@ -157,63 +158,31 @@ function cinta(offA, offB, altura, colorPorS = null) {
   return geo;
 }
 
-function construirMundo() {
-  const [MX, MY] = pista.mapa, w = pista.ancho;
+// La pista (asfalto, pianitos, línea central y puertas) depende del ancho del
+// experimento, así que se reconstruye cuando cambia. Lo demás se crea una vez.
+let grupoPista = null, anchoConstruido = null, fondoMini = null;
+function construirPista(w) {
+  if (grupoPista) {
+    scene.remove(grupoPista);
+    grupoPista.traverse((o) => o.geometry && o.geometry.dispose());
+  }
+  grupoPista = new THREE.Group();
+  puertas.length = 0;
+  anchoConstruido = w;
+  fondoMini = null;
 
-  // Suelo exterior y césped del circuito
-  const exterior = new THREE.Mesh(new THREE.CircleGeometry(700, 64),
-    new THREE.MeshStandardMaterial({ color: 0x35602a, roughness: 1 }));
-  exterior.rotation.x = -Math.PI / 2;
-  exterior.position.y = -0.06;
-  exterior.receiveShadow = true;
-  scene.add(exterior);
-
-  const cesped = new THREE.Mesh(new THREE.PlaneGeometry(2 * MX, 2 * MY),
-    new THREE.MeshStandardMaterial({ map: texturaCesped(), roughness: 0.95 }));
-  cesped.rotation.x = -Math.PI / 2;
-  cesped.receiveShadow = true;
-  scene.add(cesped);
-
-  // Asfalto, pianitos y línea central
   const asfalto = new THREE.Mesh(cinta(-w / 2, w / 2, 0.02), matAsfalto);
   asfalto.receiveShadow = true;
-  scene.add(asfalto);
+  grupoPista.add(asfalto);
   const matPiano = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
   const colorPiano = (s) => (Math.floor(s / 2) % 2 ? 0xdc2626 : 0xf5f5f5);
   for (const [a, b] of [[-w / 2 - 0.4, -w / 2 + 0.7], [w / 2 - 0.7, w / 2 + 0.4]]) {
     const m = new THREE.Mesh(cinta(a, b, 0.035, colorPiano), matPiano);
     m.receiveShadow = true;
-    scene.add(m);
+    grupoPista.add(m);
   }
-  const lineas = new THREE.Mesh(cinta(-0.12, 0.12, 0.03, (s) => (Math.floor(s / 3) % 2 ? 0x3a3d43 : 0xe5e5e5)),
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }));
-  scene.add(lineas);
-
-  // Muro perimetral con franjas
-  const matMuro = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.8 });
-  const matFranja = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.6 });
-  for (const [x, y, lx, ly] of [[0, MY, 2 * MX + 1, 0.6], [0, -MY, 2 * MX + 1, 0.6], [MX, 0, 0.6, 2 * MY], [-MX, 0, 0.6, 2 * MY]]) {
-    const muro = new THREE.Mesh(new THREE.BoxGeometry(lx, 1.0, ly), matMuro);
-    muro.position.copy(P(x, y, 0.5));
-    muro.castShadow = muro.receiveShadow = true;
-    scene.add(muro);
-    const franja = new THREE.Mesh(new THREE.BoxGeometry(lx + 0.02, 0.2, ly + 0.02), matFranja);
-    franja.position.copy(P(x, y, 0.85));
-    scene.add(franja);
-  }
-
-  // Bloques de concreto (obstáculos reales del simulador)
-  const matBloque = new THREE.MeshStandardMaterial({ color: 0xa8a29e, roughness: 0.85 });
-  const matRaya = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
-  for (const [x, y, lx, ly] of pista.bloques) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(lx, 1.2, ly), matBloque);
-    b.position.copy(P(x, y, 0.6));
-    b.castShadow = b.receiveShadow = true;
-    scene.add(b);
-    const r = new THREE.Mesh(new THREE.BoxGeometry(lx + 0.02, 0.18, ly + 0.02), matRaya);
-    r.position.copy(P(x, y, 1.0));
-    scene.add(r);
-  }
+  grupoPista.add(new THREE.Mesh(cinta(-0.12, 0.12, 0.03, (s) => (Math.floor(s / 3) % 2 ? 0x3a3d43 : 0xe5e5e5)),
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 })));
 
   // Puertas: checkpoints y meta
   for (const pu of pista.puertas) {
@@ -254,8 +223,53 @@ function construirMundo() {
     }
     g.userData.mat = mat;
     g.userData.id = pu.id;
-    scene.add(g);
+    grupoPista.add(g);
     puertas.push(g);
+  }
+  scene.add(grupoPista);
+}
+
+function construirMundo() {
+  const [MX, MY] = pista.mapa;
+
+  // Suelo exterior y césped del circuito
+  const exterior = new THREE.Mesh(new THREE.CircleGeometry(700, 64),
+    new THREE.MeshStandardMaterial({ color: 0x35602a, roughness: 1 }));
+  exterior.rotation.x = -Math.PI / 2;
+  exterior.position.y = -0.06;
+  exterior.receiveShadow = true;
+  scene.add(exterior);
+
+  const cesped = new THREE.Mesh(new THREE.PlaneGeometry(2 * MX, 2 * MY),
+    new THREE.MeshStandardMaterial({ map: texturaCesped(), roughness: 0.95 }));
+  cesped.rotation.x = -Math.PI / 2;
+  cesped.receiveShadow = true;
+  scene.add(cesped);
+
+  // Muro perimetral con franjas
+  const matMuro = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.8 });
+  const matFranja = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.6 });
+  for (const [x, y, lx, ly] of [[0, MY, 2 * MX + 1, 0.6], [0, -MY, 2 * MX + 1, 0.6], [MX, 0, 0.6, 2 * MY], [-MX, 0, 0.6, 2 * MY]]) {
+    const muro = new THREE.Mesh(new THREE.BoxGeometry(lx, 1.0, ly), matMuro);
+    muro.position.copy(P(x, y, 0.5));
+    muro.castShadow = muro.receiveShadow = true;
+    scene.add(muro);
+    const franja = new THREE.Mesh(new THREE.BoxGeometry(lx + 0.02, 0.2, ly + 0.02), matFranja);
+    franja.position.copy(P(x, y, 0.85));
+    scene.add(franja);
+  }
+
+  // Bloques de concreto (obstáculos reales del simulador)
+  const matBloque = new THREE.MeshStandardMaterial({ color: 0xa8a29e, roughness: 0.85 });
+  const matRaya = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
+  for (const [x, y, lx, ly] of pista.bloques) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(lx, 1.2, ly), matBloque);
+    b.position.copy(P(x, y, 0.6));
+    b.castShadow = b.receiveShadow = true;
+    scene.add(b);
+    const r = new THREE.Mesh(new THREE.BoxGeometry(lx + 0.02, 0.18, ly + 0.02), matRaya);
+    r.position.copy(P(x, y, 1.0));
+    scene.add(r);
   }
 
   // Árboles y faroles alrededor (decoración fuera del área del simulador)
@@ -367,7 +381,7 @@ function construirRayos() {
 
 const colorRayo = new THREE.Color();
 function colorDistancia(d) {
-  const f = clamp(d / pista.rayos.alcance, 0, 1);
+  const f = clamp(d / alcance(), 0, 1);
   if (f < 0.25) return colorRayo.setRGB(1, 0.2 + f * 2, 0.25);
   if (f < 0.55) return colorRayo.setRGB(1, 0.8, 0.15);
   return colorRayo.setRGB(0.13, 0.83, 0.93);
@@ -583,7 +597,7 @@ function actualizarHUD(est) {
   $("t-progreso").style.width = `${prog * 100}%`;
   $("t-progreso-txt").textContent = `${(prog * 100).toFixed(0)}%`;
 
-  const hw = pista.ancho / 2;
+  const hw = anchoConstruido / 2;
   $("t-desvio").textContent = `${est.d >= 0 ? "+" : ""}${est.d.toFixed(1)} m`;
   $("t-desvio-punto").style.left = `${50 - clamp(est.d / hw, -2, 2) * 25}%`;
 
@@ -613,7 +627,7 @@ function actualizarHUD(est) {
 function dibujarRadar(b) {
   const cv = $("radar"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
   g.clearRect(0, 0, W, H);
-  const cx = W / 2, cy = H - 18, R = H - 30, alc = pista.rayos.alcance;
+  const cx = W / 2, cy = H - 18, R = H - 30, alc = alcance();
   g.strokeStyle = "rgba(148,163,184,.15)";
   for (const f of [0.25, 0.5, 0.75, 1]) { g.beginPath(); g.arc(cx, cy, R * f, Math.PI, 2 * Math.PI); g.stroke(); }
   pista.rayos.angulos.forEach((ang, k) => {
@@ -653,7 +667,7 @@ function dibujarGrafica(i) {
   g.fillStyle = "#fff"; g.beginPath(); g.arc(x(i), y(f[i].R), 3.5, 0, 7); g.fill();
 }
 
-let fondoMini = null;
+
 function dibujarMinimapa(est) {
   const cv = $("minimapa"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
   const [MX, MY] = pista.mapa, k = Math.min(W / (2 * MX), H / (2 * MY));
@@ -664,8 +678,8 @@ function dibujarMinimapa(est) {
     b.fillStyle = "#1f3b1b"; b.beginPath(); b.roundRect(0, 0, W, H, 10); b.fill();
     b.lineJoin = "round";
     const camino = () => { b.beginPath(); pista.centro.forEach(([, x, y], i) => (i ? b.lineTo(X(x), Y(y)) : b.moveTo(X(x), Y(y)))); b.closePath(); };
-    b.strokeStyle = "#dc2626"; b.lineWidth = (pista.ancho + 1) * k; camino(); b.stroke();
-    b.strokeStyle = "#3a3d43"; b.lineWidth = pista.ancho * k; camino(); b.stroke();
+    b.strokeStyle = "#dc2626"; b.lineWidth = (anchoConstruido + 1) * k; camino(); b.stroke();
+    b.strokeStyle = "#3a3d43"; b.lineWidth = anchoConstruido * k; camino(); b.stroke();
     b.fillStyle = "#a8a29e";
     for (const [x, y, lx, ly] of pista.bloques) b.fillRect(X(x - lx / 2), Y(y + ly / 2), lx * k, ly * k);
     fondoMini = c;
@@ -676,7 +690,7 @@ function dibujarMinimapa(est) {
     const id = p.id, cp = est.b.cp;
     g.strokeStyle = id < cp ? "#4ade80" : id === cp ? "#facc15" : "#38bdf8";
     g.lineWidth = id === cp ? 4 : 3;
-    const nx = -Math.sin(p.h) * pista.ancho / 2, ny = Math.cos(p.h) * pista.ancho / 2;
+    const nx = -Math.sin(p.h) * anchoConstruido / 2, ny = Math.cos(p.h) * anchoConstruido / 2;
     g.beginPath(); g.moveTo(X(p.x + nx), Y(p.y + ny)); g.lineTo(X(p.x - nx), Y(p.y - ny)); g.stroke();
   });
   g.strokeStyle = "#c084fc"; g.lineWidth = 2;
@@ -691,13 +705,94 @@ function dibujarMinimapa(est) {
 }
 
 // ------------------------------------------------------------------ episodio
+// Parámetros del experimento (los rangos vienen de la ficha, vía /api/pista)
+const PARAMS = [
+  { k: "ancho", nombre: "Ancho de pista", u: "m", dec: 1 },
+  { k: "mu", nombre: "Adherencia μ", u: "", dec: 2 },
+  { k: "a_max", nombre: "Aceleración máx.", u: "m/s²", dec: 1 },
+  { k: "r_max", nombre: "Alcance sensores", u: "m", dec: 0 },
+];
+const valorParam = (k) => parseFloat($(`p-${k}`).value);
+function ponerParam(k, v) {
+  const el = $(`p-${k}`), rg = pista.rangos[k];
+  el.value = clamp(v, rg.min, rg.max);
+  const p = PARAMS.find((x) => x.k === k);
+  $(`o-${k}`).textContent = `${(+el.value).toFixed(p.dec)} ${p.u}`;
+  el.closest(".param").classList.toggle("cambiado", Math.abs(+el.value - rg.base) > 1e-9);
+  if (k === "mu") document.querySelectorAll("#sel-piso button").forEach((b) => b.classList.toggle("activo", Math.abs(parseFloat(b.dataset.mu) - el.value) < 1e-9));
+}
+function construirParametros() {
+  $("parametros").innerHTML = PARAMS.map(({ k, nombre }) => {
+    const r = pista.rangos[k];
+    return `<label class="param"><span>${nombre}</span><output id="o-${k}"></output>
+      <input id="p-${k}" type="range" min="${r.min}" max="${r.max}" step="${r.paso}" value="${r.base}">
+      <small>ficha: ${r.min}–${r.max} · base ${r.base}</small></label>`;
+  }).join("");
+  for (const { k } of PARAMS) {
+    $(`p-${k}`).oninput = (e) => ponerParam(k, +e.target.value);
+    ponerParam(k, params.has(k) ? parseFloat(params.get(k)) : pista.rangos[k].base);
+  }
+}
+function sortear() {
+  for (const { k } of PARAMS) {
+    const r = pista.rangos[k], pasos = Math.round((r.max - r.min) / r.paso);
+    ponerParam(k, r.min + Math.floor(Math.random() * (pasos + 1)) * r.paso);
+  }
+  $("inp-semilla").value = Math.floor(Math.random() * 10000);
+}
+
+// Registro de experimentos de la sesión (se guardan los episodios para repetirlos)
+const experimentos = [];
+const NOMBRE_FIN = { exito: "🏁 Vuelta completa", choque: "💥 Choque", salida: "🌀 Salida de pista", estancado: "⏸ Estancado", tiempo: "⏱ Sin tiempo" };
+function pintarExperimentos() {
+  $("n-exp").textContent = experimentos.length;
+  if (!experimentos.length) return;
+  const ok = experimentos.filter((e) => e.resultado === "exito");
+  const mejor = ok.length ? Math.min(...ok.map((e) => e.tiempo)).toFixed(1) + " s" : "—";
+  const resumen = `<div class="resumen-exp">
+    <div><small>Corridas</small><strong>${experimentos.length}</strong></div>
+    <div><small>Éxito</small><strong>${Math.round(100 * ok.length / experimentos.length)}%</strong></div>
+    <div><small>Mejor vuelta</small><strong>${mejor}</strong></div></div>`;
+  const filas = experimentos.slice().reverse().map((e) => {
+    const p = e.params, bien = e.resultado === "exito";
+    return `<button class="exp ${ep && e.id === ep.id ? "actual" : ""}" data-id="${e.id}">
+      <span class="num">#${e.id}</span>
+      <span class="res ${bien ? "ok" : "mal"}">${NOMBRE_FIN[e.resultado]}</span>
+      <span class="met">${e.tiempo.toFixed(1)} s · ${e.recompensa >= 0 ? "+" : ""}${e.recompensa.toFixed(1)}</span>
+      <span class="det">${e.piloto} · μ ${p.mu.toFixed(2)} · ${p.ancho} m · a ${p.a_max} · sensor ${p.r_max} m · semilla ${e.semilla}</span>
+    </button>`;
+  }).join("");
+  $("lista-exp").innerHTML = resumen + filas;
+  $("lista-exp").querySelectorAll(".exp").forEach((b) => (b.onclick = () => verExperimento(+b.dataset.id)));
+}
+function verExperimento(id) {
+  const e = experimentos.find((x) => x.id === id);
+  if (!e) return;
+  $("sel-piloto").value = e.piloto;
+  $("inp-semilla").value = e.semilla;
+  for (const { k } of PARAMS) ponerParam(k, e.params[k]);
+  mostrarEpisodio(e.episodio);
+}
+
 async function cargarEpisodio() {
   const piloto = $("sel-piloto").value, semilla = parseInt($("inp-semilla").value || "0", 10);
-  $("cargando-txt").textContent = `Corriendo el episodio en Python (${piloto})…`;
+  $("cargando-txt").textContent = `Simulando en Python (${piloto})…`;
   $("cargando").classList.remove("oculto");
   $("resultado").classList.add("oculto");
-  const r = await fetch(`/api/episodio?piloto=${piloto}&mu=${mu}&semilla=${semilla}`);
-  ep = await r.json();
+  const q = new URLSearchParams({ piloto, semilla });
+  for (const { k } of PARAMS) q.set(k, valorParam(k));
+  const r = await fetch(`/api/episodio?${q}`);
+  const nuevo = await r.json();
+  experimentos.push({ ...nuevo, episodio: nuevo });
+  mostrarEpisodio(nuevo);
+}
+
+function mostrarEpisodio(nuevo) {
+  ep = nuevo;
+  mu = ep.params.mu;
+  if (ep.params.ancho !== anchoConstruido) construirPista(ep.params.ancho);
+  $("t-experimento").textContent = `EXPERIMENTO #${ep.id}`;
+  pintarExperimentos();
   aplicarClima();
   construirEstela();
   tiempo = parseFloat(params.get("t") || "0");
@@ -765,10 +860,10 @@ function animar() {
     linea.geometry.attributes.position.needsUpdate = true;
     const c = colorDistancia(d);
     linea.material.color.copy(c);
-    linea.material.opacity = d >= pista.rayos.alcance - 0.01 ? 0.25 : 0.9;
+    linea.material.opacity = d >= alcance() - 0.01 ? 0.25 : 0.9;
     punta.material.color.copy(c);
     anillo.material.color.copy(c);
-    const hay = d < pista.rayos.alcance - 0.01;
+    const hay = d < alcance() - 0.01;
     punta.visible = anillo.visible = hay;
     punta.position.copy(fin);
     anillo.position.set(fin.x, 0.06, fin.z);
@@ -812,9 +907,19 @@ function conectar() {
   sel.value = params.get("piloto") || "experto";
   $("inp-semilla").value = params.get("semilla") || "0";
 
+  construirParametros();
   $("btn-correr").onclick = cargarEpisodio;
-  document.querySelectorAll("#sel-piso button").forEach((b) => (b.onclick = () => { mu = parseFloat(b.dataset.mu); cargarEpisodio(); }));
-  document.querySelectorAll("#camaras button").forEach((b) => (b.onclick = () => ponerCamara(b.dataset.cam)));
+  $("btn-azar").onclick = () => { sortear(); cargarEpisodio(); };
+  document.querySelectorAll("#sel-piso button").forEach((b) => (b.onclick = () => { ponerParam("mu", parseFloat(b.dataset.mu)); cargarEpisodio(); }));
+  document.querySelectorAll(".pestanas button").forEach((b) => (b.onclick = () => {
+    document.querySelectorAll(".pestanas button").forEach((x) => x.classList.toggle("activo", x === b));
+    $("tab-tel").classList.toggle("oculto", b.dataset.tab !== "tel");
+    $("tab-exp").classList.toggle("oculto", b.dataset.tab !== "exp");
+  }));
+  document.querySelectorAll("#camaras button[data-cam]").forEach((b) => (b.onclick = () => ponerCamara(b.dataset.cam)));
+  const paneles = () => document.body.classList.toggle("limpio");
+  $("btn-paneles").onclick = paneles;
+  if (params.get("tab") === "exp") setTimeout(() => document.querySelector('.pestanas button[data-tab="exp"]').click(), 0);
   document.querySelectorAll("#sel-vel button").forEach((b) => (b.onclick = () => {
     velocidad = parseFloat(b.dataset.v);
     document.querySelectorAll("#sel-vel button").forEach((x) => x.classList.toggle("activo", x === b));
@@ -830,7 +935,7 @@ function conectar() {
   $("barra").oninput = (e) => { tiempo = e.target.value * (ep.frames.length - 1) * pista.dt; };
   $("r-repetir").onclick = () => $("btn-reiniciar").onclick();
   $("r-cerrar").onclick = () => $("resultado").classList.add("oculto");
-  $("r-cambiar").onclick = () => { mu = mu < 0.75 ? 0.9 : 0.5; cargarEpisodio(); };
+  $("r-cambiar").onclick = () => { ponerParam("mu", mu < 0.75 ? 0.9 : 0.5); cargarEpisodio(); };
 
   addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
@@ -838,6 +943,7 @@ function conectar() {
     if (e.key >= "1" && e.key <= "5") ponerCamara(cams[+e.key - 1]);
     if (e.code === "Space") { e.preventDefault(); playPausa(); }
     if (e.key === "r" || e.key === "R") $("btn-reiniciar").onclick();
+    if (e.key === "h" || e.key === "H") paneles();
     if (e.key === "ArrowRight") tiempo = Math.min(tiempo + 2, (ep.frames.length - 1) * pista.dt);
     if (e.key === "ArrowLeft") tiempo = Math.max(tiempo - 2, 0);
   });
@@ -851,6 +957,7 @@ function conectar() {
 // ------------------------------------------------------------------ inicio
 pista = await (await fetch("/api/pista")).json();
 construirMundo();
+construirPista(pista.ancho);
 construirCarro();
 construirRayos();
 construirLluvia();

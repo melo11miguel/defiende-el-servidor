@@ -184,19 +184,61 @@ select option { background: #0f172a; }
 #cargando span { color: var(--tenue); font-size: 13px; letter-spacing: .06em; }
 #ayuda { position: fixed; bottom: 76px; right: 20px; font-size: 11px; color: rgba(148, 163, 184, .7); }
 
+/* ---------- Parámetros del experimento ---------- */
+#panel-control { max-height: calc(100vh - 100px); overflow-y: auto; }
+.parametros { display: flex; flex-direction: column; gap: 9px; text-transform: none; letter-spacing: 0; }
+.param { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; align-items: center; }
+.param span { font-size: 12px; font-weight: 500; color: var(--texto); }
+.param output { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--cian); font-weight: 700; }
+.param input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--naranja); margin: 0; height: 16px; }
+.param small { grid-column: 1 / -1; font-size: 10px; color: #64748b; font-weight: 500; margin-top: -3px; }
+.param.cambiado output { color: var(--amarillo); }
+.fila-semilla { display: flex; gap: 8px; align-items: end; }
+.fila-semilla .campo { flex: 1; }
+.fila-semilla button { white-space: nowrap; height: 36px; }
+
+/* ---------- Pestañas y registro de experimentos ---------- */
+#tab-tel { display: flex; flex-direction: column; gap: 8px; }
+.oculto { display: none !important; }
+.pestanas { display: flex; gap: 4px; background: rgba(0, 0, 0, .25); padding: 3px; border-radius: 12px; }
+.pestanas button { flex: 1; background: transparent; border: 1px solid transparent; font-size: 12.5px; font-weight: 600; padding: 6px 8px; }
+.pestanas button.activo { background: rgba(167, 139, 250, .18); border-color: rgba(167, 139, 250, .5); color: #ede9fe; }
+.contador { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 99px; background: var(--morado); color: #1e1b4b; font-size: 10.5px; font-weight: 800; margin-left: 3px; }
+.lista-exp { display: flex; flex-direction: column; gap: 6px; }
+.vacio { color: #64748b; font-size: 12px; text-align: center; margin: 18px 0; }
+.exp {
+  text-align: left; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: center;
+  padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .04); border: 1px solid transparent;
+}
+.exp:hover { background: rgba(255, 255, 255, .09); }
+.exp.actual { border-color: rgba(250, 204, 21, .55); background: rgba(250, 204, 21, .08); }
+.exp .num { font-family: "JetBrains Mono", monospace; font-weight: 700; color: var(--tenue); font-size: 12px; grid-row: span 2; }
+.exp .res { font-weight: 700; font-size: 12.5px; }
+.exp .res.ok { color: var(--verde); }
+.exp .res.mal { color: #fb7185; }
+.exp .met { font-family: "JetBrains Mono", monospace; font-size: 12px; text-align: right; }
+.exp .det { grid-column: 2 / 4; font-size: 10.5px; color: #94a3b8; font-family: "JetBrains Mono", monospace; }
+.resumen-exp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
+.resumen-exp div { background: rgba(255, 255, 255, .05); border-radius: 10px; padding: 7px; text-align: center; }
+.resumen-exp small { display: block; font-size: 9.5px; color: var(--tenue); text-transform: uppercase; letter-spacing: .08em; }
+.resumen-exp strong { font-size: 16px; font-family: "JetBrains Mono", monospace; }
+
+/* Modo escena limpia (botón 👁 o tecla H) */
+body.limpio #panel-control, body.limpio #telemetria, body.limpio #instrumentos,
+body.limpio #minimapa-caja, body.limpio #ayuda { opacity: 0; pointer-events: none; }
+#panel-control, #telemetria, #instrumentos, #minimapa-caja { transition: opacity .25s; }
+body.limpio #btn-paneles { background: rgba(250, 204, 21, 0.16); border-color: rgba(250, 204, 21, .55); }
+
 /* ---------- Pantallas pequeñas (panel lateral de VS Code) ---------- */
 @media (max-width: 1100px) {
-  #telemetria { display: none; }
-  #minimapa-caja { transform: scale(.75); transform-origin: top right; }
-  #ayuda, #panel-control .nota { display: none; }
-  #camaras { left: auto; right: 16px; top: 196px; transform: none; flex-direction: column; }
+  #minimapa-caja, #instrumentos, #ayuda, #panel-control .nota { display: none; }
+  #telemetria { top: 16px; width: 290px; max-height: calc(100vh - 150px); }
+  #camaras { top: auto; bottom: 74px; left: 50%; transform: translateX(-50%); }
+  #panel-control { width: 250px; }
 }
 @media (max-width: 760px) {
   #panel-control { width: 220px; padding: 12px; gap: 8px; }
-  #panel-control .nota { display: none; }
-  #camaras { top: auto; bottom: 70px; }
-  #instrumentos { display: none; }
-  #minimapa-caja { display: none; }
+  #telemetria { width: 240px; }
   .velocidades { display: none; }
 }
 @media (max-height: 760px) {
