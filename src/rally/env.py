@@ -100,6 +100,8 @@ class AutonomousRallyEnv(gym.Env):
         self.stall_steps = 0
         self.off_track_events = 0
         self.outcome = None
+        self.grip_use = 0.0
+        self.skidding = False
 
         return self._obs(), self._info()
 
@@ -115,11 +117,16 @@ class AutonomousRallyEnv(gym.Env):
         grip = mu * G
         a_long = max(-grip, min(grip, a_long))
         tan_d = math.tan(delta)
+        a_lat = 0.0
+        self.skidding = False
         if self.v > 0:
             a_lat = self.v**2 * abs(tan_d) / cfg.wheelbase
             a_lat_max = math.sqrt(max(grip**2 - a_long**2, 0.0))
             if a_lat > a_lat_max:  # subviraje: gira menos de lo pedido
                 tan_d = math.copysign(a_lat_max * cfg.wheelbase / self.v**2, tan_d)
+                a_lat = a_lat_max
+                self.skidding = True
+        self.grip_use = math.hypot(a_long, a_lat) / grip
 
         # 6-8. Integración (bicicleta cinemática)
         v_new = min(max(self.v + a_long * cfg.dt, 0.0), cfg.v_max)
@@ -226,6 +233,9 @@ class AutonomousRallyEnv(gym.Env):
             "next_cp": self.next_cp,
             "t": self.steps * self.cfg.dt,
             "off_track_events": self.off_track_events,
+            "off_steps": self.off_steps,
+            "grip_use": self.grip_use,
+            "skidding": self.skidding,
             "outcome": self.outcome,
         }
 

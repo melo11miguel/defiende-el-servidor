@@ -49,3 +49,43 @@ UNSW-NB15 fue creado por el Cyber Range Lab de UNSW Canberra. Si se usa, se debe
   A Global Perspective*, 25(1-3), 18-31.
 
 Fuente: https://research.unsw.edu.au/projects/unsw-nb15-dataset
+
+## Ambiente Autonomous Rally (aprendizaje por refuerzo)
+
+Diseño en [docs/ambiente-v0.1.md](docs/ambiente-v0.1.md). Implementación en `src/rally/` como ambiente
+Gymnasium `AutonomousRally-v0`.
+
+### Instalación
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"      # Windows: .venv\Scripts\pip install -e ".[dev]"
+source .venv/bin/activate              # Windows: .venv\Scripts\activate
+```
+
+### Ver y evaluar en la terminal
+
+```bash
+rally ver                          # una vuelta en vivo (piloto experto, piso seco)
+rally ver --lluvia                 # incidente: asfalto mojado (μ = 0.5)
+rally ver --piloto prudente --lluvia
+rally ver --piloto aleatoria       # sin estrategia: no completa la vuelta
+rally ver --velocidad 2            # el doble de rápido
+rally evaluar                      # métricas de la ficha, seco vs mojado, y veredicto
+rally transiciones                 # las 5 transiciones de la ficha contra el ambiente
+rally mapa                         # la pista
+```
+
+Los pilotos `experto` y `prudente` son líneas base que leen el estado interno del simulador; no son el
+agente. Para que el mapa se vea grande, maximiza la terminal.
+
+### Uso desde Python
+
+```python
+import gymnasium as gym
+import rally
+
+env = gym.make("AutonomousRally-v0")          # o AutonomousRally-v0 con mu=0.5 para lluvia
+obs, info = env.reset(seed=0)
+obs, recompensa, terminado, truncado, info = env.step([1.0, 0.0])  # [acelerador, dirección]
+```

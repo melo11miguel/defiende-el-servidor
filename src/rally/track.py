@@ -120,11 +120,44 @@ def outside_walls(x, y):
     return (np.abs(x) >= MAP_X) | (np.abs(y) >= MAP_Y)
 
 
+def point_at(s):
+    """Punto (x, y) de la línea central a la distancia s (con módulo LAP)."""
+    s = s % LAP
+    if s < 13:
+        return -40.0, -s
+    if s < S_BOTTOM:
+        th = -math.pi + (s - 13) / R
+        return -CX + R * math.cos(th), -CY + R * math.sin(th)
+    if s < S_BR:
+        return -CX + (s - S_BOTTOM), -25.0
+    if s < S_RIGHT:
+        th = -math.pi / 2 + (s - S_BR) / R
+        return CX + R * math.cos(th), -CY + R * math.sin(th)
+    if s < S_TR:
+        return 40.0, -CY + (s - S_RIGHT)
+    if s < S_TOP:
+        th = (s - S_TR) / R
+        return CX + R * math.cos(th), CY + R * math.sin(th)
+    if s < S_TL:
+        return CX - (s - S_TOP), 25.0
+    if s < S_TL + Q:
+        th = math.pi / 2 + (s - S_TL) / R
+        return -CX + R * math.cos(th), CY + R * math.sin(th)
+    return -40.0, CY - (s - S_TL - Q)
+
+
+def in_corner(s):
+    """True si la distancia s cae en una de las cuatro curvas."""
+    s = s % LAP
+    return any(a <= s < a + Q for a in (13, S_BR, S_TR, S_TL))
+
+
 def raycast(x, y, psi, angles, r_max, half_width, step=0.25, refine=8):
     """Distancia (m) de cada rayo al primer borde de pista, bloque o muro.
 
     Un rayo "choca" cuando cambia el estado en-pista/fuera-de-pista respecto
     al origen, o al tocar un bloque o el muro. Si no choca, devuelve r_max.
+    Todos los rayos se calculan a la vez con numpy.
     """
     origin_on = abs(float(lateral(x, y))) <= half_width
 
@@ -132,24 +165,20 @@ def raycast(x, y, psi, angles, r_max, half_width, step=0.25, refine=8):
         on = np.abs(lateral(px, py)) <= half_width
         return (on != origin_on) | in_obstacle(px, py) | outside_walls(px, py)
 
+    ang = psi + np.asarray(angles)
+    dx, dy = np.cos(ang), np.sin(ang)
     ts = np.arange(step, r_max + 1e-9, step)
-    out = []
-    for a in angles:
-        dx, dy = math.cos(psi + a), math.sin(psi + a)
-        h = hits(x + ts * dx, y + ts * dy)
-        if not h.any():
-            out.append(r_max)
-            continue
-        i = int(np.argmax(h))
-        lo, hi = (ts[i - 1] if i > 0 else 0.0), ts[i]
-        for _ in range(refine):  # bisección para afinar el borde
-            mid = (lo + hi) / 2
-            if hits(x + mid * dx, y + mid * dy):
-                hi = mid
-            else:
-                lo = mid
-        out.append(hi)
-    return np.array(out)
+    h = hits(x + np.outer(dx, ts), y + np.outer(dy, ts))
+    any_hit = h.any(axis=1)
+    idx = np.argmax(h, axis=1)
+    hi = ts[idx]
+    lo = np.where(idx > 0, ts[np.maximum(idx - 1, 0)], 0.0)
+    for _ in range(refine):  # bisección para afinar el borde
+        mid = (lo + hi) / 2
+        hm = hits(x + mid * dx, y + mid * dy)
+        hi = np.where(hm, mid, hi)
+        lo = np.where(hm, lo, mid)
+    return np.where(any_hit, hi, r_max)
 
 
 def car_collides(x, y, psi, length, width):
