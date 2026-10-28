@@ -1,0 +1,107 @@
+{
+  "episodios_por_condicion": 100,
+  "base": "experto",
+  "resultados": {
+    "experto": {
+      "seco": {
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 77.5,
+        "tiempo_p90_s": 77.5,
+        "incidentes_ep": 0.0,
+        "recompensa_media": 169.64,
+        "progreso_pct": 100.0
+      },
+      "mojado": {
+        "vueltas_pct": 0.0,
+        "tiempo_mediano_s": null,
+        "tiempo_p90_s": null,
+        "incidentes_ep": 2.0,
+        "recompensa_media": -44.05,
+        "progreso_pct": 11.7
+      }
+    },
+    "prudente": {
+      "seco": {
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 96.7,
+        "tiempo_p90_s": 96.7,
+        "incidentes_ep": 0.0,
+        "recompensa_media": 158.82,
+        "progreso_pct": 100.0
+      },
+      "mojado": {
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 96.8,
+        "tiempo_p90_s": 96.8,
+        "incidentes_ep": 0.0,
+        "recompensa_media": 158.67,
+        "progreso_pct": 100.0
+      }
+    },
+    "qlearning": {
+      "seco": {
+        "vueltas_pct": 0.0,
+        "tiempo_mediano_s": null,
+        "tiempo_p90_s": null,
+        "incidentes_ep": 1.68,
+        "recompensa_media": -45.34,
+        "progreso_pct": 13.6
+      },
+      "mojado": {
+        "vueltas_pct": 0.0,
+        "tiempo_mediano_s": null,
+        "tiempo_p90_s": null,
+        "incidentes_ep": 1.85,
+        "recompensa_media": -47.2,
+        "progreso_pct": 11.9
+      }
+    },
+    "ppo": {
+      "seco": {
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 77.6,
+        "tiempo_p90_s": 77.8,
+        "incidentes_ep": 0.0,
+        "recompensa_media": 164.81,
+        "progreso_pct": 100.0
+      },
+      "mojado": {
+        "vueltas_pct": 0.0,
+        "tiempo_mediano_s": null,
+        "tiempo_p90_s": null,
+        "incidentes_ep": 2.0,
+        "recompensa_media": 10.61,
+        "progreso_pct": 57.6
+      }
+    }
+  },
+  "veredictos": {
+    "prudente": {
+      "criterios": {
+        "mejora_en_mojado": true,
+        "no_pierde_vueltas_en_seco": true,
+        "tiempo_seco_maximo_5pct": false
+      },
+      "tiempo_seco_cambio_pct": 24.8,
+      "aceptado": false
+    },
+    "qlearning": {
+      "criterios": {
+        "mejora_en_mojado": false,
+        "no_pierde_vueltas_en_seco": false,
+        "tiempo_seco_maximo_5pct": false
+      },
+      "tiempo_seco_cambio_pct": null,
+      "aceptado": false
+    },
+    "ppo": {
+      "criterios": {
+        "mejora_en_mojado": false,
+        "no_pierde_vueltas_en_seco": true,
+        "tiempo_seco_maximo_5pct": true
+      },
+      "tiempo_seco_cambio_pct": 0.1,
+      "aceptado": false
+    }
+  }
+}

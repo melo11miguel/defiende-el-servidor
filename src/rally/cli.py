@@ -292,6 +292,15 @@ def cmd_pipeline(args):
     return 0
 
 
+def cmd_publicar(args):
+    from rally.publicar import publicar
+
+    url, _ = publicar(args.repo, privado=not args.publico)
+    console.print(f"[bold green]Modelo publicado:[/] [bright_cyan underline]{url}[/] "
+                  f"({'público' if args.publico else 'privado'})")
+    return 0
+
+
 def cmd_mlflow(args):
     import subprocess
 
@@ -346,6 +355,11 @@ def main(argv=None):
     pl.add_argument("--vivo", action="store_true",
                     help="transmitir el entrenamiento al visor 3D (también con RALLY_VIVO=1)")
     pl.set_defaults(fn=cmd_pipeline)
+
+    pu = sub.add_parser("publicar", help="subir el modelo PPO a Hugging Face Hub")
+    pu.add_argument("--repo", required=True, help="usuario/nombre, p. ej. miguel/autonomous-rally-ppo")
+    pu.add_argument("--publico", action="store_true", help="repositorio público (por defecto privado)")
+    pu.set_defaults(fn=cmd_publicar)
 
     ml = sub.add_parser("mlflow", help="abrir la interfaz de MLflow (experimentos y modelos)")
     ml.add_argument("--puerto", type=int, default=5001)

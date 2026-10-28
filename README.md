@@ -55,13 +55,50 @@ Fuente: https://research.unsw.edu.au/projects/unsw-nb15-dataset
 Diseño en [docs/ambiente-v0.1.md](docs/ambiente-v0.1.md). Implementación en `src/rally/` como ambiente
 Gymnasium `AutonomousRally-v0`.
 
+Circuito urbano inspirado en Mónaco: 1 049 m, 18 curvas (horquilla de Fairmont de 9.5 m), muros a ambos
+lados, 6 checkpoints y meta. La versión anterior (pista rectangular) está en el tag `ambiente-v0.1`.
+
 ### Instalación
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"      # Windows: .venv\Scripts\pip install -e ".[dev]"
 source .venv/bin/activate              # Windows: .venv\Scripts\activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # PyTorch sin CUDA (~200 MB)
+pip install -e ".[dev,ml]"
+pytest                                  # 18 pruebas: ficha, física y trampas de recompensa
 ```
+
+### MLOps: entrenar y versionar todo
+
+| Qué | Herramienta | Dónde |
+|---|---|---|
+| Código, ficha, parámetros, pipeline | Git | `src/`, `docs/`, `params.yaml`, `dvc.yaml`, `dvc.lock` |
+| Dataset de demostraciones y escenarios de evaluación | DVC | `data/processed/` |
+| Modelos entrenados (archivos) | DVC | `models/qlearning/`, `models/ppo/` |
+| Experimentos: parámetros, métricas, curvas, commit, dataset | MLflow | `mlflow.db` + `mlruns/` (locales) |
+| Registro de modelos con versiones y alias `champion` / `challenger` | MLflow Model Registry | `rally-qlearning`, `rally-ppo` |
+| Métricas del pipeline | DVC metrics | `metrics/*.json` |
+| Publicación del modelo | Hugging Face Hub | `rally publicar --repo usuario/nombre` |
+
+```bash
+dvc repro                       # corre todo: datos → qlearning / ppo → evaluar → registrar
+RALLY_VIVO=1 dvc repro          # lo mismo, transmitiendo el entrenamiento al visor 3D
+dvc dag                         # grafo del pipeline
+dvc metrics show                # métricas de la última corrida
+dvc params diff                 # qué parámetros cambiaron
+dvc push                        # sube datos y modelos al almacenamiento DVC
+rally mlflow                    # interfaz de MLflow en http://localhost:5001
+```
+
+Para un experimento nuevo: cambia un valor en `params.yaml`, corre `dvc repro` (solo rehace las etapas
+afectadas), compara en MLflow y haz commit de `params.yaml` + `dvc.lock`. Así cada versión del modelo
+queda ligada al código, los datos y los parámetros exactos que la produjeron.
+
+**Agentes:** Q-learning con tabla (15 acciones discretas) y PPO con red neuronal (128×128), preentrenado
+por imitación con el dataset y entrenado con adherencia aleatoria para aguantar la lluvia.
+
+**Hugging Face:** crea un archivo `.env` (ya está en `.gitignore`) con `HF_TOKEN=hf_...` y corre
+`rally publicar --repo usuario/autonomous-rally-ppo` (privado por defecto; `--publico` para abrirlo).
 
 ### Ver y evaluar en la terminal
 
@@ -87,7 +124,12 @@ rally web                          # abre http://localhost:8765
 
 En VS Code: `Ctrl+Shift+P` → **Simple Browser: Show** → `http://localhost:8765`. El servidor corre los
 episodios con el ambiente de Python y el navegador solo los dibuja (física ≠ decoración). Cámaras con las
-teclas 1-5, espacio para pausar, R para reiniciar y flechas para adelantar o retroceder.
+teclas 1-5, espacio para pausar, R para reiniciar, H para ocultar paneles y flechas para adelantar.
+
+- **Experimentos:** deslizantes con los 4 parámetros de la ficha, botón 🎲 Aleatorio y registro de corridas.
+- **Pilotos:** experto, prudente, aleatoria y, cuando están entrenados, `qlearning` y `ppo`.
+- **● Ver entrenamiento en vivo:** con `RALLY_VIVO=1 dvc repro` corriendo, muestra cada episodio del
+  entrenamiento y la curva de aprendizaje (pestaña Aprendizaje): se ve al modelo mejorar.
 
 ### Uso desde Python
 
