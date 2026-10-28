@@ -60,18 +60,28 @@ def datos_pista():
     s = 0.0
     while s < track.LAP:
         x, y = track.point_at(s)
-        _, _, h = track.project(x, y)
-        centro.append([_r(s, 2), _r(x), _r(y), _r(h, 4), int(track.in_corner(s))])
+        centro.append([_r(s, 2), _r(x), _r(y), _r(track.heading_at(s), 4),
+                       _r(track.curvature_at(s), 4)])
         s += 0.5
     puertas = []
-    for i, (gs, gx, gy) in enumerate(track.GATES):
-        _, _, h = track.project(gx, gy)
-        puertas.append({"id": i + 1, "s": _r(gs), "x": gx, "y": gy, "h": _r(h, 4),
-                        "nombre": "META" if i == 3 else f"CP{i + 1}"})
+    n = len(track.GATES_NAMED)
+    for i, (gs, gx, gy, curva) in enumerate(track.GATES_NAMED):
+        puertas.append({"id": i + 1, "s": _r(gs), "x": gx, "y": gy,
+                        "h": _r(track.heading_at(gs - 0.01), 4), "curva": curva,
+                        "nombre": "META" if i == n - 1 else f"CP{i + 1}"})
+    curvas = []
+    for nombre, *_ in track.VERTICES:
+        idx = [i for i, nm in enumerate(track.NAMES) if nm == nombre]
+        mid = idx[len(idx) // 2]
+        curvas.append({"nombre": nombre, "s": _r(track.SS[mid], 1),
+                       "x": _r(track.XS[mid]), "y": _r(track.YS[mid]),
+                       "radio": next(c["r"] for c in track.CORNERS if c["name"] == nombre)})
     return {
         "largo": _r(track.LAP),
         "ancho": cfg.track_width,
+        "escape": track.RUNOFF,
         "radio": track.R,
+        "curvas": curvas,
         "mapa": [track.MAP_X, track.MAP_Y],
         "centro": centro,
         "puertas": puertas,

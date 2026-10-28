@@ -158,6 +158,24 @@ function cinta(offA, offB, altura, colorPorS = null) {
   return geo;
 }
 
+// Pared vertical a lo largo de la pista, a `off` metros del centro, entre dos alturas
+function pared(off, h0, h1, colorPorS) {
+  const c = pista.centro, n = c.length, pos = [], col = [];
+  const k = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const [s, x, y, h] = c[i], [, x2, y2, h2] = c[(i + 1) % n];
+    const a = P(x - Math.sin(h) * off, y + Math.cos(h) * off), b = P(x2 - Math.sin(h2) * off, y2 + Math.cos(h2) * off);
+    const q = [[a, h0], [b, h0], [a, h1], [a, h1], [b, h0], [b, h1]];
+    k.set(colorPorS(s));
+    for (const [p, hh] of q) { pos.push(p.x, hh, p.z); col.push(k.r, k.g, k.b); }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // La pista (asfalto, pianitos, línea central y puertas) depende del ancho del
 // experimento, así que se reconstruye cuando cambia. Lo demás se crea una vez.
 let grupoPista = null, anchoConstruido = null, fondoMini = null;
@@ -183,6 +201,25 @@ function construirPista(w) {
   }
   grupoPista.add(new THREE.Mesh(cinta(-0.12, 0.12, 0.03, (s) => (Math.floor(s / 3) % 2 ? 0x3a3d43 : 0xe5e5e5)),
     new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 })));
+
+  // Zona de escape (verde) y muros a ambos lados, igual que en el simulador
+  const borde = w / 2 + pista.escape;
+  const matEscape = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+  const colorEscape = (s) => (Math.floor(s / 6) % 2 ? 0x4f8a34 : 0x5b9a3c);
+  for (const [a, b] of [[-borde, -w / 2 - 0.4], [w / 2 + 0.4, borde]]) {
+    const m = new THREE.Mesh(cinta(a, b, 0.012, colorEscape), matEscape);
+    m.receiveShadow = true;
+    grupoPista.add(m);
+  }
+  const matMuro = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, side: THREE.DoubleSide });
+  const colorMuro = (s) => [0xf5f5f5, 0xdc2626, 0xf5f5f5, 0x1d4ed8][Math.floor(s / 12) % 4];
+  for (const off of [-borde - 0.15, borde + 0.15]) {
+    const muro = new THREE.Mesh(pared(off, 0, 1.1, colorMuro), matMuro);
+    muro.castShadow = muro.receiveShadow = true;
+    grupoPista.add(muro);
+    const riel = new THREE.Mesh(pared(off, 1.1, 1.3, () => 0x9ca3af), matMuro);
+    grupoPista.add(riel);
+  }
 
   // Puertas: checkpoints y meta
   for (const pu of pista.puertas) {
@@ -240,24 +277,13 @@ function construirMundo() {
   exterior.receiveShadow = true;
   scene.add(exterior);
 
-  const cesped = new THREE.Mesh(new THREE.PlaneGeometry(2 * MX, 2 * MY),
-    new THREE.MeshStandardMaterial({ map: texturaCesped(), roughness: 0.95 }));
-  cesped.rotation.x = -Math.PI / 2;
-  cesped.receiveShadow = true;
-  scene.add(cesped);
-
-  // Muro perimetral con franjas
-  const matMuro = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.8 });
-  const matFranja = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.6 });
-  for (const [x, y, lx, ly] of [[0, MY, 2 * MX + 1, 0.6], [0, -MY, 2 * MX + 1, 0.6], [MX, 0, 0.6, 2 * MY], [-MX, 0, 0.6, 2 * MY]]) {
-    const muro = new THREE.Mesh(new THREE.BoxGeometry(lx, 1.0, ly), matMuro);
-    muro.position.copy(P(x, y, 0.5));
-    muro.castShadow = muro.receiveShadow = true;
-    scene.add(muro);
-    const franja = new THREE.Mesh(new THREE.BoxGeometry(lx + 0.02, 0.2, ly + 0.02), matFranja);
-    franja.position.copy(P(x, y, 0.85));
-    scene.add(franja);
-  }
+  // Suelo de la ciudad (adoquín) dentro del área del circuito
+  const ciudad = new THREE.Mesh(new THREE.PlaneGeometry(2 * MX, 2 * MY),
+    new THREE.MeshStandardMaterial({ color: 0x8a8279, roughness: 0.95 }));
+  ciudad.rotation.x = -Math.PI / 2;
+  ciudad.position.y = -0.01;
+  ciudad.receiveShadow = true;
+  scene.add(ciudad);
 
   // Bloques de concreto (obstáculos reales del simulador)
   const matBloque = new THREE.MeshStandardMaterial({ color: 0xa8a29e, roughness: 0.85 });
@@ -284,7 +310,7 @@ function construirMundo() {
   let k = 0, semilla = 7;
   const rnd = () => ((semilla = (semilla * 16807) % 2147483647) / 2147483647);
   while (k < N) {
-    const x = (rnd() * 2 - 1) * 150, y = (rnd() * 2 - 1) * 120;
+    const x = (rnd() * 2 - 1) * (MX + 90), y = (rnd() * 2 - 1) * (MY + 90);
     if (Math.abs(x) < MX + 6 && Math.abs(y) < MY + 6) continue;
     const e = 0.7 + rnd() * 0.8;
     s.set(e, e, e);
@@ -469,7 +495,16 @@ function aplicarClima() {
 
 // ------------------------------------------------------------------ cámaras
 const camObjetivo = new THREE.Vector3(), camMirar = new THREE.Vector3(), mirarSuave = new THREE.Vector3();
-const camsTV = [[-55, -42, 9], [55, -42, 9], [55, 42, 9], [-55, 42, 9], [0, -45, 7], [0, 45, 7], [-58, 0, 8], [58, 0, 8]];
+// Cámaras de TV: postes cada ~60 m a un costado de la pista, alternando lados
+let camsTV = [];
+function prepararCamsTV() {
+  const c = pista.centro, paso = Math.round(60 / 0.5);
+  camsTV = [];
+  for (let i = 0; i < c.length; i += paso) {
+    const [, x, y, h] = c[i], lado = (i / paso) % 2 ? 1 : -1, off = lado * (pista.ancho / 2 + pista.escape + 7);
+    camsTV.push([x - Math.sin(h) * off, y + Math.cos(h) * off, 8]);
+  }
+}
 
 function actualizarCamara(est, dt) {
   const dir = new THREE.Vector3(Math.cos(est.psi), 0, -Math.sin(est.psi));
@@ -485,8 +520,9 @@ function actualizarCamara(est, dt) {
     camMirar.copy(pos).addScaledVector(dir, 12).add(new THREE.Vector3(0, 0.9, 0));
     suave = 1;
   } else if (camara === "aerea") {
-    camObjetivo.set(6, 92, 52);
-    camMirar.set(6, 0, 4);
+    const [MX] = pista.mapa;
+    camObjetivo.set(0, MX * 0.95, MX * 0.55);
+    camMirar.set(0, 0, MX * 0.05);
     suave = 1 - Math.pow(1e-5, dt);
   } else if (camara === "tv") {
     let mejor = camsTV[0], dmin = Infinity;
@@ -956,6 +992,13 @@ function conectar() {
 
 // ------------------------------------------------------------------ inicio
 pista = await (await fetch("/api/pista")).json();
+{
+  const [MX, MY] = pista.mapa;
+  Object.assign(sol.shadow.camera, { left: -MX, right: MX, top: MY, bottom: -MY, far: 600 });
+  sol.position.set(-MX * 0.6, 160, MY * 0.5);
+  sol.shadow.camera.updateProjectionMatrix();
+}
+prepararCamsTV();
 construirMundo();
 construirPista(pista.ancho);
 construirCarro();

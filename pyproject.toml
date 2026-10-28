@@ -7,7 +7,7 @@ name = "autonomous-rally"
 version = "0.1.0"
 description = "Ambiente Autonomous Rally para aprendizaje por refuerzo (Gymnasium)"
 requires-python = ">=3.10"
-dependencies = ["gymnasium>=1.0", "numpy>=1.26", "rich>=13"]
+dependencies = ["gymnasium>=1.0", "numpy>=1.26", "rich>=13", "scipy>=1.11"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

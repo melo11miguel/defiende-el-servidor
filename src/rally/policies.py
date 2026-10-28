@@ -22,11 +22,15 @@ class PurePursuit:
 
     def __init__(self, mu_supuesto=0.9, margen=0.85, v_recta=22.0, freno=6.0,
                  wheelbase=2.5, delta_max_deg=30.0):
-        self.v_curva = math.sqrt(margen * mu_supuesto * G * track.R)
+        self.a_lat = margen * mu_supuesto * G  # aceleración lateral que se permite
         self.v_recta = v_recta
         self.freno = freno * mu_supuesto / 0.9
         self.wheelbase = wheelbase
         self.delta_max = math.radians(delta_max_deg)
+
+    def v_curva(self, kappa):
+        """Velocidad máxima en una curva de curvatura kappa: v² · |κ| <= a_lat."""
+        return math.sqrt(self.a_lat / abs(kappa)) if kappa else self.v_recta
 
     def __call__(self, obs, info):
         x, y, psi, v = info["x"], info["y"], info["psi"], info["v"]
@@ -39,12 +43,11 @@ class PurePursuit:
         delta = math.atan2(2 * self.wheelbase * math.sin(alpha), ld)
         u_dir = float(np.clip(delta / self.delta_max, -1, 1))
 
-        # Velocidad objetivo: lo que permita frenar a tiempo para la próxima curva
+        # Velocidad objetivo: la que permita frenar a tiempo para cada curva que viene
         v_obj = self.v_recta
-        for k in range(0, 41, 2):
-            if track.in_corner(s + k):
-                v_obj = min(v_obj, math.sqrt(self.v_curva**2 + 2 * self.freno * max(k - 2, 0)))
-                break
+        for k in range(0, 61, 2):
+            vc = self.v_curva(track.curvature_at(s + k))
+            v_obj = min(v_obj, math.sqrt(vc**2 + 2 * self.freno * max(k - 2, 0)))
         u_acel = float(np.clip(0.8 * (v_obj - v), -1, 1))
         return np.array([u_acel, u_dir], dtype=np.float32)
 

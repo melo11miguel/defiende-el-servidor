@@ -17,7 +17,9 @@ from rally import track
 from rally.env import RAY_ANGLES
 
 C = {
-    "muro": (31, 41, 55),
+    "muro": (203, 213, 225),
+    "ciudad1": (51, 49, 56),
+    "ciudad2": (61, 58, 66),
     "cesped1": (86, 135, 52),
     "cesped2": (98, 148, 60),
     "asfalto": (58, 61, 66),
@@ -67,15 +69,20 @@ class TrackRenderer:
         px = 1 / self.scale
         img = np.zeros(gx.shape + (3,), dtype=np.uint8)
 
-        stripes = (np.floor((gx + 50) / 6) % 2).astype(bool)  # césped cortado en franjas
-        img[:] = C["cesped1"]
-        img[stripes] = C["cesped2"]
+        # Ciudad alrededor (manzanas), escape verde y muro del circuito urbano
+        manzana = ((np.floor(gx / 14) + np.floor(gy / 14)) % 2).astype(bool)
+        img[:] = C["ciudad1"]
+        img[manzana] = C["ciudad2"]
 
-        d = track.lateral(gx, gy)
+        s, d = track.project_many(gx, gy)
+        escape = np.abs(d) <= hw + track.RUNOFF
+        stripes = (np.floor(s / 6) % 2).astype(bool)
+        img[escape] = C["cesped1"]
+        img[escape & stripes] = C["cesped2"]
+        muro = (np.abs(d) > hw + track.RUNOFF) & (np.abs(d) <= hw + track.RUNOFF + max(0.8, px))
+        img[muro] = C["muro"]
         on = np.abs(d) <= hw
         img[on] = C["asfalto"]
-
-        s = np.vectorize(lambda x, y: track.project(x, y)[0])(gx, gy)
         curb = on & (np.abs(d) > hw - max(0.8, px))
         red = (np.floor(s / 2.0) % 2).astype(bool)
         img[curb & red] = C["pianito_r"]
@@ -95,9 +102,6 @@ class TrackRenderer:
                 img[meta & chk] = C["meta_n"]
                 img[meta & ~chk] = C["meta_b"]
 
-        img[track.in_obstacle(gx, gy)] = C["bloque"]
-        border = (np.abs(gx) > track.MAP_X - px) | (np.abs(gy) > track.MAP_Y - px)
-        img[border] = C["muro"]
         self._gx, self._gy = gx, gy
         return img
 
@@ -183,6 +187,61 @@ class TrackRenderer:
         return text
 
 
+# ------------------------------------------------------------------ SVG
+
+def svg_mapa(ancho=8.0, escala=3.0):
+    """Mapa del circuito en SVG, generado desde la geometría real del ambiente."""
+    mx, my = track.MAP_X, track.MAP_Y
+    W, H = 2 * mx * escala, 2 * my * escala
+    X = lambda x: (x + mx) * escala  # noqa: E731
+    Y = lambda y: (my - y) * escala  # noqa: E731
+    pts = " ".join(f"{X(x):.1f},{Y(y):.1f}" for x, y in zip(track.XS[::4], track.YS[::4]))
+    poly = lambda color, w, extra="": (  # noqa: E731
+        f'<polygon points="{pts}" fill="none" stroke="{color}" stroke-width="{w:.1f}" '
+        f'stroke-linejoin="round" {extra}/>')
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.0f} {H + 70:.0f}" '
+         f'font-family="Segoe UI, Helvetica, Arial, sans-serif">',
+         f'<rect width="{W:.0f}" height="{H + 70:.0f}" fill="#3b3a40"/>',
+         f'<text x="16" y="28" font-size="20" font-weight="700" fill="#fff">Autonomous Rally · '
+         f'Circuito inspirado en Mónaco · {track.LAP:.0f} m</text>',
+         poly("#e5e7eb", (ancho + 2 * track.RUNOFF + 1) * escala),
+         poly("#5b9a3c", (ancho + 2 * track.RUNOFF) * escala),
+         poly("#2b2d31", ancho * escala),
+         poly("#d4d4d8", 1.2, 'stroke-dasharray="8 8"')]
+    for k, c in enumerate(track.CORNERS):
+        idx = [i for i, n in enumerate(track.NAMES) if n == c["name"]]
+        i = idx[len(idx) // 2]
+        dy = -12 if k % 2 == 0 else 20  # alterna arriba/abajo para que no se monten
+        o.append(f'<text x="{X(track.XS[i]):.0f}" y="{Y(track.YS[i]) + dy:.0f}" font-size="12" '
+                 f'fill="#fde68a" text-anchor="middle">{c["name"]} · r {c["r"]:g} m</text>')
+    for i, (s, x, y, n) in enumerate(track.GATES_NAMED):
+        h = track.heading_at(s - 0.01)
+        nx, ny = -math.sin(h) * ancho / 2, math.cos(h) * ancho / 2
+        meta = i == len(track.GATES_NAMED) - 1
+        color = "#f97316" if meta else "#22d3ee"
+        etiqueta = "SALIDA / META" if meta else f"CP{i + 1}"
+        o.append(f'<line x1="{X(x + nx):.1f}" y1="{Y(y + ny):.1f}" x2="{X(x - nx):.1f}" '
+                 f'y2="{Y(y - ny):.1f}" stroke="{color}" stroke-width="5"/>')
+        o.append(f'<text x="{X(x) + 10:.0f}" y="{Y(y) + 22:.0f}" font-size="14" font-weight="700" '
+                 f'fill="{color}">{etiqueta} · s={s:.0f} m</text>')
+    # Flecha de sentido en la salida y escala
+    h = track.HS[40]
+    x0, y0 = X(track.XS[40]), Y(track.YS[40])
+    o.append(f'<path d="M {x0:.1f} {y0:.1f} l {28 * math.cos(h):.1f} {-28 * math.sin(h):.1f}" '
+             f'stroke="#fff" stroke-width="3" marker-end="url(#f)"/>')
+    o.insert(1, '<defs><marker id="f" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" '
+                'markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" '
+                'fill="#fff"/></marker></defs>')
+    sx = 16
+    o.append(f'<line x1="{sx}" y1="{H + 40:.0f}" x2="{sx + 50 * escala:.0f}" y2="{H + 40:.0f}" '
+             f'stroke="#fff" stroke-width="3"/>')
+    o.append(f'<text x="{sx}" y="{H + 60:.0f}" font-size="13" fill="#fff">50 m · ancho de pista '
+             f'{ancho:g} m · escape {track.RUNOFF:g} m · muro a {ancho / 2 + track.RUNOFF:g} m del '
+             f'centro · sentido antihorario · origen (0,0) en el centro del mapa</text>')
+    o.append("</svg>")
+    return "\n".join(o)
+
+
 # ------------------------------------------------------------------ HUD
 
 def bar(value, width=20, color="cyan", lo=0.0, hi=1.0):
@@ -260,14 +319,16 @@ def hud(info, obs, action, reward, total, politica, mu, cfg, paso):
 
     # Checkpoints y progreso de la vuelta
     cps = Text()
-    names = ["CP1", "CP2", "CP3", "META"]
-    for i, n in enumerate(names, 1):
+    n_gates = len(track.GATES)
+    for i in range(1, n_gates + 1):
+        n = "META" if i == n_gates else str(i)
         if i < info["next_cp"]:
             cps.append(f"✔{n} ", style="bold green")
         elif i == info["next_cp"]:
-            cps.append(f"▶{n} ", style="bold yellow")
+            cps.append(f"▶{n} ", style="bold black on yellow")
+            cps.append(" ")
         else:
-            cps.append(f"·{n} ", style="grey50")
+            cps.append(f"{n} ", style="grey50")
     tbl.add_row("Checkpoints", cps)
     prog = max(0.0, info["s_best"]) / track.LAP
     p = bar(prog, 18, "bold green", 0, 1)

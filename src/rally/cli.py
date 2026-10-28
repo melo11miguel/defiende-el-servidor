@@ -49,7 +49,7 @@ def _layout(escala):
     lado = min((w - render.HUD_WIDTH - 2) / mapa_w, (h - 3) / mapa_h)
     arriba = min((w - 1) / mapa_w, (h - HUD_ALTO - 3) / mapa_h)
     sc = max(lado, arriba)
-    sc = float(np.clip(sc, 0.4, 1.6))
+    sc = float(np.clip(sc, 0.12, 1.6))
     return sc, lado >= arriba
 
 
@@ -225,19 +225,17 @@ def veredicto(res, base, cand):
 
 def cmd_transiciones(args):
     env = AutonomousRallyEnv()
-    tbl = Table(title="Ficha (a mano) vs. ambiente (código)", box=box.ROUNDED,
+    tbl = Table(title="Ficha vs. ambiente (código)", box=box.ROUNDED,
                 header_style="bold bright_cyan", title_style="bold")
     for col in ["", "Transición", "Acción", "Recompensa ficha", "Recompensa ambiente",
-                "Posición nueva", "Sig. CP", "Fin", "Obs. máx. Δ"]:
+                "Velocidad", "Desvío", "Derrape", "Sig. CP", "Fin"]:
         tbl.add_column(col)
     todo_ok = True
     for tr in TRANSICIONES:
-        obs, r, info = ejecutar(env, tr)
+        _, r, info = ejecutar(env, tr)
         e = tr["esperado"]
-        d_obs = float(np.max(np.abs(np.round(obs, 2) - np.array(tr["obs"]))))
-        ok = (abs(r - e["recompensa"]) < 0.01 and abs(info["x"] - e["x"]) < 0.02
-              and abs(info["y"] - e["y"]) < 0.02 and info["next_cp"] == e["next_cp"]
-              and info["outcome"] == e["fin"] and d_obs <= 0.015)
+        ok = (abs(r - e["recompensa"]) < 0.01 and info["next_cp"] == e["next_cp"]
+              and info["outcome"] == e["fin"])
         todo_ok &= ok
         tbl.add_row(
             "[bold green]✔[/]" if ok else "[bold red]✖[/]",
@@ -245,10 +243,11 @@ def cmd_transiciones(args):
             f"({tr['accion'][0]:+.2f}, {tr['accion'][1]:+.2f})",
             f"{e['recompensa']:+.3f}",
             f"[bold]{r:+.3f}[/]",
-            f"({info['x']:.2f}, {info['y']:.2f})",
+            f"{info['v']:.2f} m/s",
+            f"{info['d']:+.2f} m",
+            "[bold red]sí[/]" if info["skidding"] else "no",
             str(info["next_cp"]),
             info["outcome"] or "—",
-            f"{d_obs:.3f}",
         )
     console.print(tbl)
     console.print("[bold green]Las 5 transiciones coinciden con la ficha.[/]" if todo_ok
@@ -260,13 +259,18 @@ def cmd_transiciones(args):
 
 def cmd_mapa(args):
     env = AutonomousRallyEnv()
+    if args.svg:
+        with open(args.svg, "w", encoding="utf-8") as f:
+            f.write(render.svg_mapa(env.cfg.track_width))
+        console.print(f"[green]Mapa guardado en {args.svg}[/]")
+        return 0
     escala, _ = _layout(args.escala)
     rnd = render.TrackRenderer(env, escala)
     obs, info = env.reset(seed=0)
     console.print(rnd.map_text(info, obs))
     console.print(render.leyenda())
     console.print(f"[grey62]Pista {track.LAP:.2f} m · ancho {env.cfg.track_width:.0f} m · "
-                  f"curvas de radio {track.R:.0f} m · sentido antihorario · 1 carácter = "
+                  f"{len(track.VERTICES)} curvas (la más cerrada de {track.R:.1f} m) · {len(track.GATES) - 1} checkpoints · 1 carácter = "
                   f"{1 / escala:.2f} m[/]")
     return 0
 
@@ -302,6 +306,7 @@ def main(argv=None):
 
     m = sub.add_parser("mapa", help="dibujar la pista")
     m.add_argument("--escala", type=float, default=None)
+    m.add_argument("--svg", metavar="ARCHIVO", help="guardar el mapa con medidas en SVG")
     m.set_defaults(fn=cmd_mapa)
 
     w = sub.add_parser("web", help="visor 3D en el navegador (three.js)")

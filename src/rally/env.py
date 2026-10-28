@@ -1,4 +1,8 @@
-"""Ambiente Gymnasium de Autonomous Rally (diseño: docs/ambiente-v0.1.md)."""
+"""Ambiente Gymnasium de Autonomous Rally (diseño: docs/ambiente-v0.1.md).
+
+Circuito urbano inspirado en Mónaco: una vuelta pasando los checkpoints en
+orden. A cada lado de la pista hay una zona de escape corta y luego el muro.
+"""
 
 import math
 from dataclasses import dataclass
@@ -11,6 +15,8 @@ from rally import track
 
 G = 9.81
 RAY_ANGLES = np.radians([-90, -60, -30, 0, 30, 60, 90])
+NOTAS_M = (10.0, 25.0, 50.0)  # "notas del copiloto": curvatura a estas distancias
+VERSION = "0.1-monaco"
 
 
 @dataclass
@@ -18,7 +24,7 @@ class RallyConfig:
     # Parámetros del escenario
     track_width: float = 8.0  # w (m)
     mu: float = 0.9  # adherencia del asfalto
-    mu_grass: float = 0.35  # adherencia del césped
+    mu_grass: float = 0.35  # adherencia en la zona de escape
     a_max: float = 4.0  # m/s²
     b_max: float = 8.0  # m/s²
     r_max: float = 20.0  # alcance de sensores (m)
@@ -31,7 +37,7 @@ class RallyConfig:
     car_length: float = 4.0
     car_width: float = 1.8
     # Episodio
-    max_steps: int = 600  # 60 s
+    max_steps: int = 1800  # 180 s (~3 veces una vuelta experta)
     off_track_limit: int = 10  # pasos seguidos fuera de pista (1 s)
     stall_limit: int = 100  # pasos sin mejorar s_best (10 s)
     start_lateral_noise: float = 0.5  # m
@@ -48,9 +54,9 @@ class RallyConfig:
 
 
 class AutonomousRallyEnv(gym.Env):
-    """Una vuelta a la pista pasando CP1 -> CP2 -> CP3 -> meta.
+    """Una vuelta al circuito pasando los checkpoints en orden hasta la meta.
 
-    Observación (13): [v, ω, sinφ, cosφ, d, eψ, 7 rayos], normalizada.
+    Observación (16): [v, ω, sinφ, cosφ, d, eψ, 7 rayos, 3 notas de curvatura].
     Acción (2): [u_acel, u_dir] en [-1, 1].
     """
 
@@ -63,8 +69,8 @@ class AutonomousRallyEnv(gym.Env):
         self.render_mode = render_mode
         self.delta_max = math.radians(self.cfg.delta_max_deg)
 
-        low = np.array([0, -1, -1, -1, -2, -1] + [0] * 7, dtype=np.float32)
-        high = np.array([1, 1, 1, 1, 2, 1] + [1] * 7, dtype=np.float32)
+        low = np.array([0, -1, -1, -1, -2, -1] + [0] * 7 + [-1] * 3, dtype=np.float32)
+        high = np.array([1, 1, 1, 1, 2, 1] + [1] * 7 + [1] * 3, dtype=np.float32)
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
 
@@ -75,12 +81,14 @@ class AutonomousRallyEnv(gym.Env):
         cfg = self.cfg
         state = (options or {}).get("state")
         if state is None:
-            # Salida en (-40, 0) mirando al sur, con ruido.
+            # Salida en la línea de meta, mirando en el sentido de la pista, con ruido.
             lat = self.np_random.uniform(-cfg.start_lateral_noise, cfg.start_lateral_noise)
             dpsi = math.radians(
                 self.np_random.uniform(-cfg.start_heading_noise_deg, cfg.start_heading_noise_deg)
             )
-            state = {"x": -40.0 + lat, "y": 0.0, "psi": -math.pi / 2 + dpsi}
+            h = float(track.HS[0])
+            state = {"x": float(track.XS[0]) - lat * math.sin(h),
+                     "y": float(track.YS[0]) + lat * math.cos(h), "psi": h + dpsi}
 
         self.x = float(state["x"])
         self.y = float(state["y"])
@@ -138,9 +146,13 @@ class AutonomousRallyEnv(gym.Env):
         self.y += v_new * math.sin(self.psi) * cfg.dt
         self.steps += 1
 
-        # 9. Proyección sobre la pista; s acumulado sin módulo
+        # 9. Proyección sobre la pista; s acumulado sin módulo.
+        # Un salto mayor a lo que se puede recorrer en un paso es una proyección
+        # sobre otro tramo cercano (p. ej. la horquilla): no cuenta como avance.
         s_raw, self.d, _ = track.project(self.x, self.y)
         ds = (s_raw - self.s_raw + track.LAP / 2) % track.LAP - track.LAP / 2
+        if abs(ds) > 2 * cfg.v_max * cfg.dt + 1.0:
+            ds = 0.0
         s_prev = self.s_cum
         self.s_cum += ds
         self.s_raw = s_raw
@@ -153,10 +165,11 @@ class AutonomousRallyEnv(gym.Env):
         self.prev_action = u
 
         terminated = False
-        if self.next_cp <= len(track.GATES) and on_track:
+        n_gates = len(track.GATES)
+        if self.next_cp <= n_gates and on_track:
             gate_s = track.GATES[self.next_cp - 1][0]
             if s_prev < gate_s <= self.s_cum:
-                if self.next_cp == len(track.GATES):
+                if self.next_cp == n_gates:
                     reward += cfg.r_lap
                     terminated, self.outcome = True, "exito"
                 else:
@@ -164,9 +177,11 @@ class AutonomousRallyEnv(gym.Env):
                 self.next_cp += 1
 
         if on_track:
-            cap = track.GATES[min(self.next_cp, len(track.GATES)) - 1][0]
-            new_best = max(self.s_best, min(self.s_cum, cap))
-            gain = new_best - self.s_best
+            # Se paga el nuevo máximo de progreso, pero nunca más de lo que el carro
+            # avanzó en este paso ni más allá de la próxima puerta sin cruzarla.
+            cap = track.GATES[min(self.next_cp, n_gates) - 1][0]
+            gain = min(max(min(self.s_cum, cap) - self.s_best, 0.0), max(ds, 0.0))
+            new_best = self.s_best + gain
             reward += cfg.w_progress * gain
             self.s_best = new_best
             self.off_steps = 0
@@ -179,7 +194,8 @@ class AutonomousRallyEnv(gym.Env):
         self.stall_steps = 0 if gain > 1e-9 else self.stall_steps + 1
 
         if not terminated:
-            if track.car_collides(self.x, self.y, self.psi, cfg.car_length, cfg.car_width):
+            if track.car_collides(self.x, self.y, self.psi, cfg.car_length, cfg.car_width,
+                                  cfg.track_width / 2):
                 terminated, self.outcome = True, "choque"
                 reward += cfg.r_fail
             elif self.off_steps >= cfg.off_track_limit:
@@ -203,13 +219,14 @@ class AutonomousRallyEnv(gym.Env):
 
     def _obs(self):
         cfg = self.cfg
-        _, d, tangent = track.project(self.x, self.y)
+        s_raw, d, tangent = track.project(self.x, self.y)
         cp = track.GATES[min(self.next_cp, len(track.GATES)) - 1]
         phi = track.wrap_angle(math.atan2(cp[2] - self.y, cp[1] - self.x) - self.psi)
         e_psi = track.wrap_angle(self.psi - tangent)
         rays = track.raycast(
             self.x, self.y, self.psi, RAY_ANGLES, cfg.r_max, cfg.track_width / 2
         )
+        notas = [np.clip(track.curvature_at(s_raw + k) * track.R, -1, 1) for k in NOTAS_M]
         obs = [
             self.v / cfg.v_max,
             np.clip(self.omega / 2.0, -1, 1),
@@ -218,6 +235,7 @@ class AutonomousRallyEnv(gym.Env):
             np.clip(d / (cfg.track_width / 2), -2, 2),
             e_psi / math.pi,
             *(rays / cfg.r_max),
+            *notas,
         ]
         return np.array(obs, dtype=np.float32)
 
@@ -239,14 +257,16 @@ class AutonomousRallyEnv(gym.Env):
             "outcome": self.outcome,
         }
 
-    def _ascii(self, cols=50, rows=18):
-        """Mapa en texto: '#' pista, '.' césped, 'B' bloque, números CP, '@' carro."""
+    def _ascii(self, cols=80, rows=24):
+        """Mapa en texto: '#' pista, '|' muro, números CP, 'M' meta, '@' carro."""
         xs = np.linspace(-track.MAP_X, track.MAP_X, cols)
         ys = np.linspace(track.MAP_Y, -track.MAP_Y, rows)
         gx, gy = np.meshgrid(xs, ys)
-        on = np.abs(track.lateral(gx, gy)) <= self.cfg.track_width / 2
-        grid = np.where(on, "#", ".").astype("<U1")
-        grid[track.in_obstacle(gx, gy)] = "B"
+        d = np.abs(track.lateral(gx, gy))
+        hw = self.cfg.track_width / 2
+        grid = np.full(gx.shape, " ", dtype="<U1")
+        grid[d <= hw + track.RUNOFF + 2] = "|"
+        grid[d <= hw] = "#"
 
         def cell(x, y):
             c = int(round((x + track.MAP_X) / (2 * track.MAP_X) * (cols - 1)))
@@ -254,7 +274,7 @@ class AutonomousRallyEnv(gym.Env):
             return min(max(r, 0), rows - 1), min(max(c, 0), cols - 1)
 
         for i, (_, gx_, gy_) in enumerate(track.GATES):
-            grid[cell(gx_, gy_)] = "M" if i == 3 else str(i + 1)
+            grid[cell(gx_, gy_)] = "M" if i == len(track.GATES) - 1 else str(i + 1)
         grid[cell(self.x, self.y)] = "@"
         status = (
             f"t={self.steps * self.cfg.dt:5.1f}s v={self.v:5.2f}m/s s={self.s_cum:7.2f}m "
