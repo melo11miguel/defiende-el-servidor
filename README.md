@@ -79,6 +79,16 @@ rally mapa                         # la pista
 Los pilotos `experto` y `prudente` son líneas base que leen el estado interno del simulador; no son el
 agente. Para que el mapa se vea grande, maximiza la terminal.
 
+### Visor 3D (three.js)
+
+```bash
+rally web                          # abre http://localhost:8765
+```
+
+En VS Code: `Ctrl+Shift+P` → **Simple Browser: Show** → `http://localhost:8765`. El servidor corre los
+episodios con el ambiente de Python y el navegador solo los dibuja (física ≠ decoración). Cámaras con las
+teclas 1-5, espacio para pausar, R para reiniciar y flechas para adelantar o retroceder.
+
 ### Uso desde Python
 
 ```python

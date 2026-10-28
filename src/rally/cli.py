@@ -4,6 +4,7 @@
     rally evaluar        métricas de la ficha (seco vs. mojado)
     rally transiciones   comparar las 5 transiciones de la ficha con el ambiente
     rally mapa           dibujar la pista
+    rally web            visor 3D en el navegador (three.js)
 """
 
 import argparse
@@ -302,6 +303,10 @@ def main(argv=None):
     m = sub.add_parser("mapa", help="dibujar la pista")
     m.add_argument("--escala", type=float, default=None)
     m.set_defaults(fn=cmd_mapa)
+
+    w = sub.add_parser("web", help="visor 3D en el navegador (three.js)")
+    w.add_argument("--puerto", type=int, default=8765)
+    w.set_defaults(fn=lambda a: __import__("rally.web", fromlist=["servir"]).servir(a.puerto))
 
     args = p.parse_args(argv)
     if not args.cmd:

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autonomous Rally · Visor 3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {"imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }}
+  </script>
+</head>
+<body>
+  <div id="escena"></div>
+
+  <!-- Marca + controles del episodio -->
+  <section id="panel-control" class="vidrio">
+    <div class="marca">
+      <div class="logo">
+        <svg viewBox="0 0 32 32"><path d="M4 22c0-7 5-12 12-12s12 5 12 12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M16 22l6-8" stroke="#facc15" stroke-width="3" stroke-linecap="round"/><circle cx="16" cy="22" r="2.6" fill="#facc15"/></svg>
+      </div>
+      <div>
+        <h1>AUTONOMOUS RALLY</h1>
+        <p>AutonomousRally-v0 · Gymnasium</p>
+      </div>
+    </div>
+    <label class="campo">Piloto
+      <select id="sel-piloto"></select>
+    </label>
+    <div class="campo">Piso
+      <div class="segmentado" id="sel-piso">
+        <button data-mu="0.9" class="activo">☀ Seco</button>
+        <button data-mu="0.5">☂ Mojado</button>
+      </div>
+    </div>
+    <label class="campo">Semilla
+      <input id="inp-semilla" type="number" value="0" min="0" max="9999">
+    </label>
+    <button id="btn-correr" class="primario">▶ Correr episodio</button>
+    <p class="nota">La física corre en Python. Este visor solo dibuja el estado del simulador.</p>
+  </section>
+
+  <!-- Cámaras -->
+  <nav id="camaras" class="vidrio">
+    <button data-cam="persecucion" class="activo" title="1">Persecución</button>
+    <button data-cam="tv" title="2">TV</button>
+    <button data-cam="aerea" title="3">Aérea</button>
+    <button data-cam="cabina" title="4">Cabina</button>
+    <button data-cam="libre" title="5">Libre</button>
+  </nav>
+
+  <!-- Minimapa -->
+  <section id="minimapa-caja" class="vidrio">
+    <canvas id="minimapa" width="300" height="214"></canvas>
+  </section>
+
+  <!-- Telemetría -->
+  <aside id="telemetria" class="vidrio">
+    <div class="fila-titulo">
+      <span>TELEMETRÍA</span>
+      <span id="estado" class="pastilla ok">● EN PISTA</span>
+    </div>
+
+    <div class="grande">
+      <div>
+        <small>Recompensa total</small>
+        <strong id="t-total" class="mono">+0.0</strong>
+      </div>
+      <div class="der">
+        <small>Último paso</small>
+        <strong id="t-paso" class="mono pequeno">+0.00</strong>
+      </div>
+    </div>
+    <canvas id="grafica" width="300" height="64"></canvas>
+
+    <small class="etiqueta">Checkpoints</small>
+    <div id="cps" class="cps"></div>
+    <div class="progreso"><div id="t-progreso"></div><span id="t-progreso-txt">0%</span></div>
+
+    <small class="etiqueta">Sensores (lo que observa el agente)</small>
+    <canvas id="radar" width="300" height="150"></canvas>
+
+    <small class="etiqueta">Desvío del centro <span id="t-desvio" class="mono">+0.0 m</span></small>
+    <div class="carril"><div class="borde-izq"></div><div class="borde-der"></div><div id="t-desvio-punto"></div></div>
+  </aside>
+
+  <!-- Instrumentos -->
+  <section id="instrumentos" class="vidrio">
+    <div class="velocimetro">
+      <svg viewBox="0 0 200 200">
+        <defs>
+          <linearGradient id="grad-vel" x1="0" x2="1">
+            <stop offset="0" stop-color="#22d3ee"/><stop offset=".6" stop-color="#a78bfa"/><stop offset="1" stop-color="#f43f5e"/>
+          </linearGradient>
+        </defs>
+        <path d="M 30 150 A 80 80 0 1 1 170 150" class="arco-fondo"/>
+        <path id="arco-vel" d="M 30 150 A 80 80 0 1 1 170 150" class="arco-valor"/>
+        <g id="marcas"></g>
+        <line id="aguja" x1="100" y1="100" x2="100" y2="34" />
+        <circle cx="100" cy="100" r="7" class="centro-aguja"/>
+      </svg>
+      <div class="lectura">
+        <strong id="i-kmh" class="mono">0</strong><span>km/h</span>
+        <small id="i-ms" class="mono">0.0 m/s</small>
+      </div>
+    </div>
+
+    <div class="pedales">
+      <div class="pedal"><div class="tubo"><div id="i-acel" class="relleno acel"></div></div><span>ACEL</span></div>
+      <div class="pedal"><div class="tubo"><div id="i-freno" class="relleno freno"></div></div><span>FRENO</span></div>
+    </div>
+
+    <div class="volante-caja">
+      <svg id="volante" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="#e5e7eb" stroke-width="8"/>
+        <circle cx="50" cy="50" r="9" fill="#e5e7eb"/>
+        <path d="M14 56 L41 52 M86 56 L59 52 M50 59 L50 88" stroke="#e5e7eb" stroke-width="7" stroke-linecap="round"/>
+        <rect x="46" y="6" width="8" height="10" rx="2" fill="#f97316"/>
+      </svg>
+      <span id="i-dir" class="mono">0°</span>
+    </div>
+
+    <div class="agarre">
+      <svg viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="40" class="anillo-fondo"/>
+        <circle id="i-agarre-arco" cx="50" cy="50" r="40" class="anillo"/>
+      </svg>
+      <div class="lectura-agarre"><strong id="i-agarre" class="mono">0%</strong><span>AGARRE</span></div>
+    </div>
+  </section>
+
+  <!-- Línea de tiempo -->
+  <section id="linea-tiempo" class="vidrio">
+    <button id="btn-play" class="icono" title="Espacio">❚❚</button>
+    <button id="btn-reiniciar" class="icono" title="R">↺</button>
+    <input id="barra" type="range" min="0" max="1" step="0.001" value="0">
+    <span id="reloj" class="mono">0.0 / 0.0 s</span>
+    <div class="segmentado velocidades" id="sel-vel">
+      <button data-v="0.5">½×</button>
+      <button data-v="1" class="activo">1×</button>
+      <button data-v="2">2×</button>
+      <button data-v="4">4×</button>
+    </div>
+  </section>
+
+  <div id="aviso"></div>
+
+  <div id="resultado" class="oculto">
+    <div class="tarjeta vidrio">
+      <div id="r-icono" class="r-icono">🏁</div>
+      <h2 id="r-titulo">VUELTA COMPLETA</h2>
+      <div class="r-datos">
+        <div><small>Tiempo</small><strong id="r-tiempo" class="mono">—</strong></div>
+        <div><small>Recompensa</small><strong id="r-recompensa" class="mono">—</strong></div>
+        <div><small>Progreso</small><strong id="r-progreso" class="mono">—</strong></div>
+        <div><small>Salidas</small><strong id="r-salidas" class="mono">—</strong></div>
+      </div>
+      <div class="r-botones">
+        <button id="r-repetir">↺ Repetir</button>
+        <button id="r-cambiar" class="primario">☂ Probar con lluvia</button>
+        <button id="r-cerrar">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cargando"><div class="giro"></div><span id="cargando-txt">Cargando pista…</span></div>
+  <div id="ayuda" class="mono">1-5 cámara · Espacio pausa · R reiniciar · ←/→ adelantar</div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

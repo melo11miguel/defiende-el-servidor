@@ -17,3 +17,6 @@ where = ["src"]
 
 [project.scripts]
 rally = "rally.cli:main"
+
+[tool.setuptools.package-data]
+rally = ["static/*"]
