@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 760" width="880" height="760" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <!-- Escala: 1 m = 8 px. px = (x + 50) * 8 + 40 ; py = (35 - y) * 8 + 40 -->
+  <rect width="880" height="760" fill="#f5f3ee"/>
+  <text x="40" y="26" font-size="18" font-weight="700" fill="#14283d">Autonomous Rally · Mapa v0.1 (vista superior, medidas en metros)</text>
+
+  <!-- Límite del mapa 100 m x 70 m (muro) -->
+  <rect x="40" y="40" width="800" height="560" fill="#9cc066" stroke="#5a5f66" stroke-width="6"/>
+
+  <!-- Pista: línea central = rectángulo redondeado 80 x 50 m, radio 12 m; ancho w = 8 m -->
+  <rect x="80" y="120" width="640" height="400" rx="96" ry="96" fill="none" stroke="#e8e8e8" stroke-width="68"/>
+  <rect x="80" y="120" width="640" height="400" rx="96" ry="96" fill="none" stroke="#3b3f45" stroke-width="64"/>
+  <rect x="80" y="120" width="640" height="400" rx="96" ry="96" fill="none" stroke="#f2f2f2" stroke-width="1.5" stroke-dasharray="10 10"/>
+
+  <!-- Obstáculos estáticos en el césped interior (bloques 6 x 2 m) -->
+  <g fill="#8e939a" stroke="#4d5157" stroke-width="1.5">
+    <rect x="296" y="376" width="48" height="16"/>
+    <rect x="536" y="392" width="48" height="16"/>
+    <rect x="320" y="232" width="48" height="16"/>
+    <rect x="576" y="224" width="16" height="48"/>
+  </g>
+  <g font-size="11" fill="#14283d">
+    <text x="296" y="372">B1 (−15, −8)</text>
+    <text x="536" y="424">B2 (15, −10)</text>
+    <text x="320" y="228">B3 (−12, 10)</text>
+    <text x="598" y="252">B4 (18, 9)</text>
+  </g>
+
+  <!-- Checkpoints (puertas perpendiculares a la pista, ancho completo) -->
+  <g stroke="#14b8c8" stroke-width="6" stroke-linecap="round">
+    <line x1="440" y1="488" x2="440" y2="552"/>
+    <line x1="688" y1="320" x2="752" y2="320"/>
+    <line x1="440" y1="88" x2="440" y2="152"/>
+  </g>
+  <g font-size="13" font-weight="700" fill="#0b6f7a">
+    <text x="448" y="572">CP1 (0, −25) · s = 59.85 m</text>
+    <text x="760" y="316">CP2</text>
+    <text x="760" y="332" font-weight="400" font-size="11">(40, 0)</text>
+    <text x="760" y="346" font-weight="400" font-size="11">s = 119.70</text>
+    <text x="448" y="80">CP3 (0, 25) · s = 179.55 m</text>
+  </g>
+
+  <!-- Salida / Meta (cuadros) en (−40, 0) -->
+  <g>
+    <rect x="48" y="316" width="64" height="8" fill="#ffffff"/>
+    <rect x="48" y="316" width="8" height="4" fill="#111"/><rect x="64" y="316" width="8" height="4" fill="#111"/>
+    <rect x="80" y="316" width="8" height="4" fill="#111"/><rect x="96" y="316" width="8" height="4" fill="#111"/>
+    <rect x="56" y="320" width="8" height="4" fill="#111"/><rect x="72" y="320" width="8" height="4" fill="#111"/>
+    <rect x="88" y="320" width="8" height="4" fill="#111"/><rect x="104" y="320" width="8" height="4" fill="#111"/>
+  </g>
+  <text x="120" y="296" font-size="13" font-weight="700" fill="#c2410c">SALIDA / META</text>
+  <text x="120" y="310" font-size="11" fill="#14283d">(−40, 0) · s = 0 ≡ 239.40 m</text>
+
+  <!-- Rayos de sensores desde la posición inicial (T1), alcance 20 m -->
+  <g stroke="#22d3ee" stroke-width="1.6">
+    <line x1="80" y1="320" x2="48" y2="320"/>
+    <line x1="80" y1="320" x2="48" y2="338.5"/>
+    <line x1="80" y1="320" x2="48" y2="375.4"/>
+    <line x1="80" y1="320" x2="80" y2="480" stroke-dasharray="4 3"/>
+    <line x1="80" y1="320" x2="112" y2="375.4"/>
+    <line x1="80" y1="320" x2="112" y2="338.5"/>
+    <line x1="80" y1="320" x2="112" y2="320"/>
+  </g>
+  <g fill="#22d3ee"><circle cx="48" cy="338.5" r="2.5"/><circle cx="48" cy="375.4" r="2.5"/><circle cx="112" cy="375.4" r="2.5"/><circle cx="112" cy="338.5" r="2.5"/></g>
+
+  <!-- Carro en la salida (1.8 x 4.0 m), mirando al sur -->
+  <rect x="72.8" y="320" width="14.4" height="32" rx="3" fill="#f97316" stroke="#7c2d12" stroke-width="1.5"/>
+
+  <!-- Sentido de giro: antihorario -->
+  <g fill="#fbbf24" font-size="22" font-weight="700">
+    <text x="300" y="528">→</text><text x="560" y="528">→</text>
+    <text x="300" y="128">←</text><text x="560" y="128">←</text>
+    <text x="712" y="250">↑</text><text x="712" y="430">↑</text>
+    <text x="72" y="430">↓</text><text x="72" y="210">↓</text>
+  </g>
+
+  <!-- Origen y ejes -->
+  <g stroke="#14283d" stroke-width="1.5" fill="none">
+    <line x1="440" y1="320" x2="480" y2="320"/><line x1="440" y1="320" x2="440" y2="280"/>
+    <polyline points="474,315 480,320 474,325"/><polyline points="435,286 440,280 445,286"/>
+  </g>
+  <circle cx="440" cy="320" r="3" fill="#14283d"/>
+  <g font-size="12" fill="#14283d"><text x="446" y="336">(0, 0)</text><text x="484" y="324">x</text><text x="444" y="278">y</text></g>
+
+  <!-- Cotas -->
+  <g stroke="#14283d" stroke-width="1" font-size="11" fill="#14283d">
+    <line x1="80" y1="616" x2="720" y2="616"/><line x1="80" y1="610" x2="80" y2="622"/><line x1="720" y1="610" x2="720" y2="622"/>
+    <text x="330" y="632" stroke="none">línea central: 80 m (x = −40 … 40)</text>
+    <line x1="40" y1="644" x2="840" y2="644"/><line x1="40" y1="638" x2="40" y2="650"/><line x1="840" y1="638" x2="840" y2="650"/>
+    <text x="350" y="660" stroke="none">mapa: 100 m (x = −50 … 50)</text>
+  </g>
+  <g stroke="#14283d" stroke-width="1" font-size="11" fill="#14283d">
+    <line x1="860" y1="40" x2="860" y2="600"/><line x1="854" y1="40" x2="866" y2="40"/><line x1="854" y1="600" x2="866" y2="600"/>
+    <text x="852" y="420" stroke="none" transform="rotate(-90 852 420)">mapa: 70 m (y = −35 … 35)</text>
+  </g>
+
+  <!-- Escala 10 m -->
+  <g stroke="#14283d" stroke-width="2"><line x1="640" y1="580" x2="720" y2="580"/><line x1="640" y1="574" x2="640" y2="586"/><line x1="720" y1="574" x2="720" y2="586"/></g>
+  <text x="660" y="574" font-size="11" fill="#14283d">10 m</text>
+
+  <!-- Leyenda -->
+  <g font-size="12" fill="#14283d">
+    <rect x="40" y="680" width="22" height="12" fill="#3b3f45"/><text x="68" y="691">Asfalto: ancho w = 8 m, μ = 0.9</text>
+    <rect x="290" y="680" width="22" height="12" fill="#9cc066"/><text x="318" y="691">Césped: μ = 0.35 (fuera de pista)</text>
+    <rect x="540" y="680" width="22" height="12" fill="#8e939a"/><text x="568" y="691">Obstáculo / muro: choque = fin</text>
+    <line x1="40" y1="712" x2="62" y2="712" stroke="#14b8c8" stroke-width="5"/><text x="68" y="716">Checkpoint (en orden 1→2→3→meta)</text>
+    <line x1="290" y1="712" x2="312" y2="712" stroke="#22d3ee" stroke-width="2"/><text x="318" y="716">7 rayos (−90° … +90°, alcance 20 m)</text>
+    <text x="540" y="716">Curvas: radio central 12 m (interior 8, exterior 16)</text>
+    <text x="40" y="742">Largo de vuelta por la línea central L = 164 m (rectas) + 75.40 m (curvas) = 239.40 m · sentido antihorario</text>
+  </g>
+</svg>
