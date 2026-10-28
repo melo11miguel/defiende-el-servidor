@@ -1,0 +1,77 @@
+# Pipeline de MLOps de Autonomous Rally. Correr todo:  dvc repro
+# Ver el grafo:  dvc dag      Ver métricas:  dvc metrics show
+
+stages:
+  datos:
+    cmd: rally pipeline datos
+    deps:
+      - src/rally/env.py
+      - src/rally/track.py
+      - src/rally/policies.py
+      - src/rally/pipeline.py
+    params:
+      - ambiente
+      - datos
+      - evaluacion.episodios
+      - evaluacion.semilla_inicial
+      - evaluacion.mu_seco
+      - evaluacion.mu_mojado
+    outs:
+      - data/processed/demos.npz
+      - data/processed/escenarios.json
+    metrics:
+      - metrics/datos.json:
+          cache: false
+
+  qlearning:
+    cmd: rally pipeline qlearning
+    deps:
+      - data/processed/demos.npz
+      - src/rally/env.py
+      - src/rally/track.py
+      - src/rally/agentes/qlearning.py
+      - src/rally/agentes/discreto.py
+    params:
+      - ambiente
+      - qlearning
+    outs:
+      - models/qlearning
+
+  ppo:
+    cmd: rally pipeline ppo
+    deps:
+      - data/processed/demos.npz
+      - src/rally/env.py
+      - src/rally/track.py
+      - src/rally/agentes/ppo.py
+    params:
+      - ambiente
+      - ppo
+    outs:
+      - models/ppo
+
+  evaluar:
+    cmd: rally pipeline evaluar
+    deps:
+      - data/processed/escenarios.json
+      - models/qlearning
+      - models/ppo
+      - src/rally/env.py
+      - src/rally/track.py
+      - src/rally/policies.py
+    params:
+      - ambiente
+      - evaluacion
+    metrics:
+      - metrics/evaluacion.json:
+          cache: false
+
+  registrar:
+    cmd: rally pipeline registrar
+    deps:
+      - metrics/evaluacion.json
+      - models/qlearning
+      - models/ppo
+    metrics:
+      - metrics/registro.json:
+          cache: false

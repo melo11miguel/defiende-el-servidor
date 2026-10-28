@@ -275,6 +275,34 @@ def cmd_mapa(args):
     return 0
 
 
+# ------------------------------------------------------------------- MLOps
+
+def cmd_pipeline(args):
+    import os
+
+    from rally import pipeline
+
+    vivo = args.vivo or os.environ.get("RALLY_VIVO") == "1"
+    console.print(f"[bold bright_cyan]▶ Etapa: {args.etapa}[/]" + ("  [red]● en vivo[/]" if vivo else ""))
+    etapas = {"datos": pipeline.etapa_datos, "evaluar": pipeline.etapa_evaluar,
+              "registrar": pipeline.etapa_registrar,
+              "qlearning": lambda: pipeline.etapa_qlearning(vivo),
+              "ppo": lambda: pipeline.etapa_ppo(vivo)}
+    etapas[args.etapa]()
+    return 0
+
+
+def cmd_mlflow(args):
+    import subprocess
+
+    from rally.agentes.seguimiento import TRACKING_URI
+
+    console.print(f"[bold]MLflow[/] en [bright_cyan underline]http://localhost:{args.puerto}[/]  "
+                  "(Ctrl+C para detener)")
+    return subprocess.call(["mlflow", "ui", "--backend-store-uri", TRACKING_URI,
+                            "--port", str(args.puerto), "--host", "127.0.0.1"])
+
+
 # ------------------------------------------------------------------- main
 
 def main(argv=None):
@@ -312,6 +340,16 @@ def main(argv=None):
     w = sub.add_parser("web", help="visor 3D en el navegador (three.js)")
     w.add_argument("--puerto", type=int, default=8765)
     w.set_defaults(fn=lambda a: __import__("rally.web", fromlist=["servir"]).servir(a.puerto))
+
+    pl = sub.add_parser("pipeline", help="una etapa del pipeline de MLOps (la usa DVC)")
+    pl.add_argument("etapa", choices=["datos", "qlearning", "ppo", "evaluar", "registrar"])
+    pl.add_argument("--vivo", action="store_true",
+                    help="transmitir el entrenamiento al visor 3D (también con RALLY_VIVO=1)")
+    pl.set_defaults(fn=cmd_pipeline)
+
+    ml = sub.add_parser("mlflow", help="abrir la interfaz de MLflow (experimentos y modelos)")
+    ml.add_argument("--puerto", type=int, default=5001)
+    ml.set_defaults(fn=cmd_mlflow)
 
     args = p.parse_args(argv)
     if not args.cmd:

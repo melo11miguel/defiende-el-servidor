@@ -23,6 +23,7 @@ from rally import policies, track
 from rally.env import RAY_ANGLES, AutonomousRallyEnv, RallyConfig
 
 STATIC = Path(__file__).parent / "static"
+VIVO = Path("runs/vivo")  # lo escribe el entrenamiento (rally pipeline ... --vivo)
 console = Console()
 mimetypes.add_type("application/javascript", ".js")
 
@@ -88,7 +89,7 @@ def datos_pista():
         "bloques": [list(o) for o in track.OBSTACLES],
         "carro": {"largo": cfg.car_length, "ancho": cfg.car_width, "ejes": cfg.wheelbase},
         "rayos": {"angulos": [_r(a, 4) for a in RAY_ANGLES], "alcance": cfg.r_max},
-        "pilotos": {k: v[0] for k, v in policies.POLITICAS.items()},
+        "pilotos": {k: v[0] for k, v in policies.POLITICAS.items() if policies.disponible(k)},
         "dt": cfg.dt,
         "max_t": cfg.max_steps * cfg.dt,
         "delta_max": math.radians(cfg.delta_max_deg),
@@ -183,6 +184,17 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(ep)
         if url.path == "/api/experimentos":
             return self._json(EXPERIMENTOS)
+        if url.path in ("/api/vivo/curva", "/api/vivo/episodio"):
+            archivo = VIVO / ("curva.json" if url.path.endswith("curva") else "episodio.json")
+            if not archivo.exists():
+                return self._json({"activo": False})
+            body = archivo.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return None
         return super().do_GET()
 
 

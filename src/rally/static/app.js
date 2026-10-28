@@ -4,6 +4,12 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { construirEscenario } from "./escenario.js";
+import { crearCarro, crearHumo } from "./carro.js";
 
 const $ = (id) => document.getElementById(id);
 const P = (x, y, h = 0) => new THREE.Vector3(x, h, -y);
@@ -29,8 +35,14 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 $("escena").appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const cam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
+const cam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 4000);
 cam.position.set(0, 60, 70);
+// Post-procesado: brillo suave (bloom) en faros, luces del túnel y sol
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, cam));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.35, 0.6, 0.9);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 const controles = new OrbitControls(cam, renderer.domElement);
 controles.enableDamping = true;
 controles.maxPolarAngle = Math.PI * 0.48;
@@ -39,6 +51,7 @@ controles.enabled = false;
 const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x3b5d2a, 0.9);
 scene.add(hemi);
 const sol = new THREE.DirectionalLight(0xfff1dc, 2.4);
+sol.name = "sol";
 sol.position.set(-60, 90, 40);
 sol.castShadow = true;
 sol.shadow.mapSize.set(4096, 4096);
@@ -266,60 +279,10 @@ function construirPista(w) {
   scene.add(grupoPista);
 }
 
+// Escenario (cielo, mar, ciudad, público, túnel...) en escenario.js
+let escenario = null;
 function construirMundo() {
-  const [MX, MY] = pista.mapa;
-
-  // Suelo exterior y césped del circuito
-  const exterior = new THREE.Mesh(new THREE.CircleGeometry(700, 64),
-    new THREE.MeshStandardMaterial({ color: 0x35602a, roughness: 1 }));
-  exterior.rotation.x = -Math.PI / 2;
-  exterior.position.y = -0.06;
-  exterior.receiveShadow = true;
-  scene.add(exterior);
-
-  // Suelo de la ciudad (adoquín) dentro del área del circuito
-  const ciudad = new THREE.Mesh(new THREE.PlaneGeometry(2 * MX, 2 * MY),
-    new THREE.MeshStandardMaterial({ color: 0x8a8279, roughness: 0.95 }));
-  ciudad.rotation.x = -Math.PI / 2;
-  ciudad.position.y = -0.01;
-  ciudad.receiveShadow = true;
-  scene.add(ciudad);
-
-  // Bloques de concreto (obstáculos reales del simulador)
-  const matBloque = new THREE.MeshStandardMaterial({ color: 0xa8a29e, roughness: 0.85 });
-  const matRaya = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
-  for (const [x, y, lx, ly] of pista.bloques) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(lx, 1.2, ly), matBloque);
-    b.position.copy(P(x, y, 0.6));
-    b.castShadow = b.receiveShadow = true;
-    scene.add(b);
-    const r = new THREE.Mesh(new THREE.BoxGeometry(lx + 0.02, 0.18, ly + 0.02), matRaya);
-    r.position.copy(P(x, y, 1.0));
-    scene.add(r);
-  }
-
-  // Árboles y faroles alrededor (decoración fuera del área del simulador)
-  const tronco = new THREE.CylinderGeometry(0.25, 0.35, 2, 6);
-  const copa = new THREE.ConeGeometry(2.2, 5, 7);
-  const matTronco = new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 1 });
-  const matCopa = new THREE.MeshStandardMaterial({ color: 0x2f6b2a, roughness: 0.9, flatShading: true });
-  const N = 170;
-  const iT = new THREE.InstancedMesh(tronco, matTronco, N), iC = new THREE.InstancedMesh(copa, matCopa, N);
-  iT.castShadow = iC.castShadow = true;
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
-  let k = 0, semilla = 7;
-  const rnd = () => ((semilla = (semilla * 16807) % 2147483647) / 2147483647);
-  while (k < N) {
-    const x = (rnd() * 2 - 1) * (MX + 90), y = (rnd() * 2 - 1) * (MY + 90);
-    if (Math.abs(x) < MX + 6 && Math.abs(y) < MY + 6) continue;
-    const e = 0.7 + rnd() * 0.8;
-    s.set(e, e, e);
-    m.compose(P(x, y, 1 * e), q, s); iT.setMatrixAt(k, m);
-    m.compose(P(x, y, 4.3 * e), q, s); iC.setMatrixAt(k, m);
-    iC.setColorAt(k, new THREE.Color().setHSL(0.27 + rnd() * 0.06, 0.45, 0.24 + rnd() * 0.1));
-    k++;
-  }
-  scene.add(iT, iC);
+  escenario = construirEscenario({ scene, renderer, pista, P, pared, cinta });
 }
 
 // ------------------------------------------------------------------ carro
@@ -327,66 +290,15 @@ const carro = new THREE.Group();
 const ruedas = [];
 let luzFreno, faro;
 
+let humo = null;
 function construirCarro() {
-  const { largo: L, ancho: W, ejes } = pista.carro;
-  const pintura = new THREE.MeshPhysicalMaterial({ color: 0xf97316, metalness: 0.4, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
-  const negro = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.6 });
-  const vidrio = new THREE.MeshPhysicalMaterial({ color: 0x0b1220, metalness: 0.2, roughness: 0.05, transmission: 0, clearcoat: 1 });
-  const blanco = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
-
-  const add = (geo, mat, x, y, z, sombra = true) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.castShadow = sombra;
-    carro.add(m);
-    return m;
-  };
-  add(new THREE.BoxGeometry(L, 0.5, W), pintura, 0, 0.55, 0);               // chasis
-  add(new THREE.BoxGeometry(L * 0.32, 0.18, W * 0.9), pintura, L * 0.33, 0.86, 0); // capó
-  add(new THREE.BoxGeometry(L * 0.46, 0.5, W * 0.84), vidrio, -L * 0.06, 1.04, 0); // cabina
-  add(new THREE.BoxGeometry(L * 0.47, 0.06, W * 0.86), pintura, -L * 0.06, 1.3, 0); // techo
-  add(new THREE.BoxGeometry(L * 1.01, 0.08, 0.28), blanco, 0, 0.81, 0.22);   // franjas
-  add(new THREE.BoxGeometry(L * 1.01, 0.08, 0.28), blanco, 0, 0.81, -0.22);
-  add(new THREE.BoxGeometry(0.3, 0.08, W * 1.02), negro, -L * 0.48, 1.25, 0);  // alerón
-  add(new THREE.BoxGeometry(0.1, 0.4, 0.1), negro, -L * 0.48, 1.05, 0.6);
-  add(new THREE.BoxGeometry(0.1, 0.4, 0.1), negro, -L * 0.48, 1.05, -0.6);
-  add(new THREE.BoxGeometry(0.25, 0.2, W * 1.02), negro, L * 0.5, 0.42, 0);   // parachoques
-
-  const faroMat = new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfff7cc, emissiveIntensity: 2 });
-  for (const z of [0.6, -0.6]) add(new THREE.BoxGeometry(0.06, 0.14, 0.38), faroMat, L / 2 + 0.01, 0.66, z, false);
-  luzFreno = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, emissive: 0xff1e1e, emissiveIntensity: 0.4 });
-  for (const z of [0.62, -0.62]) add(new THREE.BoxGeometry(0.06, 0.12, 0.42), luzFreno, -L / 2 - 0.01, 0.68, z, false);
-
-  // Ruedas: pivote (dirección) -> giro (rodar) -> malla
-  const geoRueda = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 24);
-  const llanta = new THREE.MeshStandardMaterial({ color: 0x0b0b0b, roughness: 0.9 });
-  const rin = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.9, roughness: 0.25 });
-  for (const [x, z, delantera] of [[ejes / 2, W / 2, true], [ejes / 2, -W / 2, true], [-ejes / 2, W / 2, false], [-ejes / 2, -W / 2, false]]) {
-    const pivote = new THREE.Group();
-    pivote.position.set(x, 0.36, z);
-    const giro = new THREE.Group();
-    const llantaM = new THREE.Mesh(geoRueda, llanta);
-    llantaM.rotation.x = Math.PI / 2;
-    llantaM.castShadow = true;
-    const rinM = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.32, 6), rin);
-    rinM.rotation.x = Math.PI / 2;
-    giro.add(llantaM, rinM);
-    pivote.add(giro);
-    carro.add(pivote);
-    ruedas.push({ pivote, giro, delantera });
-  }
-
-  // Faro real (visible sobre todo con lluvia) y halo bajo el carro
-  faro = new THREE.SpotLight(0xfff3c4, 0, 45, 0.5, 0.6, 1.2);
-  faro.position.set(L / 2, 0.8, 0);
-  faro.target.position.set(L / 2 + 10, 0, 0);
-  carro.add(faro, faro.target);
-  const halo = new THREE.Mesh(new THREE.CircleGeometry(2.6, 32),
-    new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.18, depthWrite: false }));
-  halo.rotation.x = -Math.PI / 2;
-  halo.position.y = 0.05;
-  carro.add(halo);
+  const c = crearCarro(pista.carro);
+  carro.add(c.grupo);
+  ruedas.push(...c.ruedas);
+  luzFreno = c.luzFreno;
+  faro = c.faro;
   scene.add(carro);
+  humo = crearHumo(scene);
 }
 
 // ------------------------------------------------------------------ rayos
@@ -480,10 +392,9 @@ function construirLluvia() {
 
 function aplicarClima() {
   const mojado = mu < 0.75;
-  scene.background = mojado ? cielo("#1e293b", "#475569") : cielo("#1e5aa8", "#b9dcf5");
-  scene.fog = new THREE.Fog(mojado ? 0x475569 : 0xb9dcf5, mojado ? 60 : 140, mojado ? 230 : 420);
-  hemi.intensity = mojado ? 0.55 : 0.9;
-  sol.intensity = mojado ? 0.9 : 2.4;
+  escenario.aplicarClima(mojado);
+  hemi.intensity = mojado ? 0.35 : 0.55;
+  hemi.color.set(mojado ? 0x9fb0c8 : 0xffd9a8);
   matAsfalto.roughness = mojado ? 0.32 : 0.9;
   matAsfalto.metalness = mojado ? 0.08 : 0.0;
   matAsfalto.color.set(mojado ? 0xb4bcc9 : 0xffffff);
@@ -521,7 +432,7 @@ function actualizarCamara(est, dt) {
     suave = 1;
   } else if (camara === "aerea") {
     const [MX] = pista.mapa;
-    camObjetivo.set(0, MX * 0.95, MX * 0.55);
+    camObjetivo.set(0, MX * 1.2, MX * 0.8);
     camMirar.set(0, 0, MX * 0.05);
     suave = 1 - Math.pow(1e-5, dt);
   } else if (camara === "tv") {
@@ -827,7 +738,7 @@ function mostrarEpisodio(nuevo) {
   ep = nuevo;
   mu = ep.params.mu;
   if (ep.params.ancho !== anchoConstruido) construirPista(ep.params.ancho);
-  $("t-experimento").textContent = `EXPERIMENTO #${ep.id}`;
+  $("t-experimento").textContent = ep.vivo ? `ENTRENAMIENTO · EPISODIO #${ep.id}` : `EXPERIMENTO #${ep.id}`;
   pintarExperimentos();
   aplicarClima();
   construirEstela();
@@ -869,7 +780,7 @@ function animar() {
       tiempo = dur;
       reproduciendo = false;
       $("btn-play").textContent = "▶";
-      if (!terminado) { terminado = true; setTimeout(mostrarResultado, 700); }
+      if (!terminado) { terminado = true; if (!ep.vivo) setTimeout(mostrarResultado, 700); }
     }
   }
   if (tiempo < dur) terminado = false;
@@ -885,6 +796,20 @@ function animar() {
   carro.rotation.z = clamp(-est.accion[0] * 0.02, -0.02, 0.02);         // cabeceo al acelerar/frenar
   carro.rotation.x = clamp(est.accion[1] * est.v * 0.002, -0.05, 0.05);  // inclinación en curva
   luzFreno.emissiveIntensity = est.accion[0] < -0.05 ? 4 : 0.4;
+
+  // Humo de llantas: al derrapar, al pisar la zona de escape o al arrancar fuerte
+  if (reproduciendo && humo) {
+    const fuerte = est.b.derrape ? 1 : est.b.fuera > 0 ? 0.8 : est.accion[0] > 0.8 && est.v < 7 ? 0.35 : 0;
+    if (fuerte > 0) {
+      const back = -pista.carro.ejes / 2, W = pista.carro.ancho / 2;
+      for (const lado of [W, -W]) {
+        const p = rueda({ x: est.x, y: est.y, psi: est.psi }, back, lado);
+        humo.emitir(P(p.x, p.y), fuerte * Math.min(1, dt * velocidad * 60));
+      }
+    }
+  }
+  if (humo) humo.actualizar(dt * Math.max(velocidad, 1));
+  if (escenario) escenario.actualizar(dt, performance.now() / 1000);
 
   // Rayos desde el carro (distancias reales de la observación)
   pista.rayos.angulos.forEach((ang, k) => {
@@ -933,7 +858,88 @@ function animar() {
 
   actualizarCamara(est, dt);
   actualizarHUD(est);
-  renderer.render(scene, cam);
+  composer.render();
+}
+
+// ------------------------------------------------------------------ entrenamiento en vivo
+// El entrenamiento (Python) guarda cada episodio terminado en runs/vivo/. Aquí se
+// consulta cada 1.5 s y se reproduce el más reciente: se ve al modelo mejorar.
+let modoVivo = false, vivoTimer = null, vivoUltimo = 0;
+
+async function sondearVivo() {
+  try {
+    const c = await (await fetch("/api/vivo/curva")).json();
+    if (!c.episodios || !c.episodios.length) { estadoVivo(null); return; }
+    estadoVivo(c);
+    dibujarCurvas(c.episodios);
+    const ult = c.episodios[c.episodios.length - 1];
+    const fin = ep ? (ep.frames.length - 1) * pista.dt : 0;
+    const libre = !ep || !ep.vivo || !reproduciendo || tiempo >= fin - 0.05;
+    if (ult.episodio > vivoUltimo && libre) {
+      const e = await (await fetch("/api/vivo/episodio")).json();
+      if (e.frames) { vivoUltimo = e.id; e.vivo = true; mostrarEpisodio(e); }
+    }
+  } catch (err) { /* el entrenamiento puede estar escribiendo; se reintenta */ }
+}
+
+function estadoVivo(c) {
+  const el = $("apr-estado");
+  if (!c) {
+    el.className = "apr-estado";
+    $("insignia-txt").textContent = "EN VIVO · esperando entrenamiento…";
+    return;
+  }
+  const eps = c.episodios, ult = eps[eps.length - 1], rec = eps.slice(-50);
+  const vueltas = Math.round(100 * rec.filter((e) => e.resultado === "exito").length / rec.length);
+  const mejor = Math.max(...eps.map((e) => e.progreso));
+  const pasos = ult.pasos_totales >= 1e6 ? (ult.pasos_totales / 1e6).toFixed(2) + " M" : Math.round(ult.pasos_totales / 1e3) + " k";
+  const min = (c.segundos / 60).toFixed(1);
+  el.className = "apr-estado activo";
+  el.textContent = `Entrenando ${c.agente.toUpperCase()} · ${min} min · ${pasos} pasos de simulación`;
+  $("insignia-txt").textContent = `EN VIVO · ${c.agente.toUpperCase()} · episodio ${ult.episodio} · ${pasos} pasos`;
+  $("apr-resumen").innerHTML = `
+    <div><small>Episodios</small><strong>${ult.episodio}</strong></div>
+    <div><small>Vueltas (últ. 50)</small><strong>${vueltas}%</strong></div>
+    <div><small>Mejor progreso</small><strong>${mejor.toFixed(0)}%</strong></div>`;
+}
+
+function dibujarCurvas(eps) {
+  const dib = (id, valor, lo, hi, color) => {
+    const cv = $(id), g = cv.getContext("2d"), W = cv.width, H = cv.height, n = eps.length;
+    g.clearRect(0, 0, W, H);
+    const x = (i) => 4 + (i / Math.max(n - 1, 1)) * (W - 8), y = (v) => H - 6 - (clamp(v, lo, hi) - lo) / (hi - lo || 1) * (H - 12);
+    g.strokeStyle = "rgba(148,163,184,.15)";
+    for (const f of [0.25, 0.5, 0.75]) { g.beginPath(); g.moveTo(0, H * f); g.lineTo(W, H * f); g.stroke(); }
+    eps.forEach((e, i) => {
+      g.fillStyle = e.resultado === "exito" ? "rgba(74,222,128,.75)" : "rgba(148,163,184,.35)";
+      g.fillRect(x(i) - 1, y(valor(e)) - 1, 2.2, 2.2);
+    });
+    const k = Math.max(5, Math.round(n / 25));  // media móvil
+    g.strokeStyle = color; g.lineWidth = 2.5; g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const v = eps.slice(Math.max(0, i - k), i + 1).reduce((a, e) => a + valor(e), 0) / Math.min(i + 1, k + 1);
+      i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v));
+    }
+    g.stroke();
+  };
+  dib("curva-progreso", (e) => e.progreso, 0, 100, "#22d3ee");
+  const rs = eps.map((e) => e.recompensa);
+  dib("curva-recompensa", (e) => e.recompensa, Math.min(...rs), Math.max(...rs), "#a78bfa");
+}
+
+function alternarVivo() {
+  modoVivo = !modoVivo;
+  $("btn-vivo").classList.toggle("activo", modoVivo);
+  $("btn-vivo").textContent = modoVivo ? "■ Salir del modo en vivo" : "● Ver entrenamiento en vivo";
+  $("insignia-vivo").classList.toggle("oculto", !modoVivo);
+  clearInterval(vivoTimer);
+  if (modoVivo) {
+    document.querySelector('.pestanas button[data-tab="apr"]').click();
+    $("resultado").classList.add("oculto");
+    document.querySelector('#sel-vel button[data-v="2"]').click();
+    sondearVivo();
+    vivoTimer = setInterval(sondearVivo, 1500);
+  }
 }
 
 // ------------------------------------------------------------------ eventos
@@ -949,9 +955,10 @@ function conectar() {
   document.querySelectorAll("#sel-piso button").forEach((b) => (b.onclick = () => { ponerParam("mu", parseFloat(b.dataset.mu)); cargarEpisodio(); }));
   document.querySelectorAll(".pestanas button").forEach((b) => (b.onclick = () => {
     document.querySelectorAll(".pestanas button").forEach((x) => x.classList.toggle("activo", x === b));
-    $("tab-tel").classList.toggle("oculto", b.dataset.tab !== "tel");
-    $("tab-exp").classList.toggle("oculto", b.dataset.tab !== "exp");
+    for (const t of ["tel", "exp", "apr"]) $(`tab-${t}`).classList.toggle("oculto", b.dataset.tab !== t);
   }));
+  $("btn-vivo").onclick = alternarVivo;
+  if (params.get("vivo") === "1") setTimeout(alternarVivo, 0);
   document.querySelectorAll("#camaras button[data-cam]").forEach((b) => (b.onclick = () => ponerCamara(b.dataset.cam)));
   const paneles = () => document.body.classList.toggle("limpio");
   $("btn-paneles").onclick = paneles;
@@ -987,6 +994,7 @@ function conectar() {
     cam.aspect = innerWidth / innerHeight;
     cam.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
   });
 }
 

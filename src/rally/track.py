@@ -234,16 +234,57 @@ def in_obstacle(x, y):
 
 def outside_walls(x, y, half_width):
     """True más allá del muro: zona de escape superada o fuera del mapa."""
-    beyond = np.abs(lateral(x, y)) > half_width + RUNOFF
+    beyond = abs_lateral_rapido(np.asarray(x, dtype=float), np.asarray(y, dtype=float)) > half_width + RUNOFF
     return beyond | (np.abs(x) >= MAP_X) | (np.abs(y) >= MAP_Y)
 
 
-def raycast(x, y, psi, angles, r_max, half_width, step=0.25, refine=8):
+# ------------------------------------------------------------- grilla rápida
+# Para los rayos se consulta |d| miles de veces por segundo. En vez del KD-tree
+# se usa una grilla precalculada cada 0.25 m con interpolación bilineal.
+GRID_RES = 0.25
+_grid = None
+
+
+def _cargar_grilla():
+    global _grid
+    import hashlib
+    import os
+    from pathlib import Path
+
+    clave = hashlib.sha1(repr((VERTICES, SAMPLE, GRID_RES, MARGIN)).encode()).hexdigest()[:12]
+    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "rally" / f"grilla-{clave}.npy"
+    if cache.exists():
+        _grid = np.load(cache)
+        return _grid
+    gx = np.arange(-MAP_X, MAP_X + GRID_RES, GRID_RES)
+    gy = np.arange(-MAP_Y, MAP_Y + GRID_RES, GRID_RES)
+    mx, my = np.meshgrid(gx, gy)
+    _grid = np.abs(lateral(mx, my)).astype(np.float32)
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        np.save(cache, _grid)
+    except OSError:
+        pass
+    return _grid
+
+
+def abs_lateral_rapido(x, y):
+    """|d| interpolado desde la grilla (error < 1 cm cerca de la pista)."""
+    g = _grid if _grid is not None else _cargar_grilla()
+    fx = (np.clip(x, -MAP_X, MAP_X - 1e-6) + MAP_X) / GRID_RES
+    fy = (np.clip(y, -MAP_Y, MAP_Y - 1e-6) + MAP_Y) / GRID_RES
+    ix, iy = np.floor(fx).astype(np.int64), np.floor(fy).astype(np.int64)
+    tx, ty = fx - ix, fy - iy
+    return ((g[iy, ix] * (1 - tx) + g[iy, ix + 1] * tx) * (1 - ty)
+            + (g[iy + 1, ix] * (1 - tx) + g[iy + 1, ix + 1] * tx) * ty)
+
+
+def raycast(x, y, psi, angles, r_max, half_width, step=0.25, refine=7):
     """Distancia (m) de cada rayo al primer borde de pista o muro (r_max si no hay)."""
     origin_on = abs(float(lateral(x, y))) <= half_width
 
     def hits(px, py):
-        d = np.abs(lateral(px, py))
+        d = abs_lateral_rapido(px, py)
         on = d <= half_width
         wall = (d > half_width + RUNOFF) | (np.abs(px) >= MAP_X) | (np.abs(py) >= MAP_Y)
         return (on != origin_on) | wall

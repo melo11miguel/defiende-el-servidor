@@ -22,3 +22,6 @@ mlflow.db
 # Entorno
 .env
 .DS_Store
+
+# Transmisión en vivo del entrenamiento (rally pipeline ... --vivo)
+/runs/

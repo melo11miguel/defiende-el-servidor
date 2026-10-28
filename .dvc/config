@@ -1,0 +1,5 @@
+[core]
+    remote = almacen
+    autostage = true
+['remote "almacen"']
+    url = /home/asus/dvc-almacen-rally

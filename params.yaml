@@ -1,0 +1,44 @@
+# Parámetros del pipeline. DVC los versiona: si cambias uno, `dvc repro` rehace
+# solo las etapas que dependen de él, y cada corrida queda registrada en MLflow.
+
+ambiente:            # escenario base (ficha: docs/ambiente-v0.1.md)
+  track_width: 8.0   # m
+  mu: 0.9            # adherencia (seco)
+  a_max: 4.0         # m/s²
+  r_max: 20.0        # m, alcance de sensores
+
+datos:               # dataset de demostraciones para el preentrenamiento por imitación
+  demos_episodios: 12  # vueltas por piloto (experto en seco + prudente en mojado)
+  semilla: 500         # semillas distintas a las de evaluación
+
+qlearning:
+  episodios: 1500
+  alpha: 0.15
+  gamma: 0.98
+  epsilon_inicial: 1.0
+  epsilon_final: 0.02
+  semilla: 0
+
+ppo:
+  pasos: 1000000
+  n_envs: 12
+  learning_rate: 0.0003
+  n_steps: 1024
+  batch_size: 2048
+  gamma: 0.995
+  ent_coef: 0.0
+  capas: [128, 128]
+  bc_epocas: 40          # preentrenamiento por imitación (0 = desde cero)
+  dominio_aleatorio: true
+  mu_min: 0.5            # rango de adherencia sorteado en cada episodio
+  mu_max: 1.0
+  eval_cada: 100000      # pasos entre evaluaciones rápidas
+  semilla: 0
+
+evaluacion:          # protocolo de la ficha
+  episodios: 100
+  semilla_inicial: 0
+  mu_seco: 0.9
+  mu_mojado: 0.5
+  base: experto
+  pilotos: [experto, prudente, qlearning, ppo]

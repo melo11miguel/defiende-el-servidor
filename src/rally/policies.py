@@ -5,6 +5,7 @@ simulador, información que el agente no ve. Sirven como línea base.
 """
 
 import math
+from pathlib import Path
 
 import numpy as np
 
@@ -62,12 +63,37 @@ class Aleatoria:
         return self.rng.uniform(-1, 1, size=2).astype(np.float32)
 
 
+MODELOS = {"qlearning": Path("models/qlearning/q_table.npz"), "ppo": Path("models/ppo/modelo.zip")}
+_cache = {}
+
+
+def _modelo(nombre):
+    """Carga una sola vez el modelo entrenado (models/, versionado con DVC)."""
+    if nombre not in _cache:
+        if nombre == "ppo":
+            from rally.agentes.ppo import PilotoPPO
+            _cache[nombre] = PilotoPPO(MODELOS[nombre])
+        else:
+            from rally.agentes.qlearning import AgenteQ
+            _cache[nombre] = AgenteQ.cargar(MODELOS[nombre])
+    return _cache[nombre]
+
+
 POLITICAS = {
     "experto": ("Pure pursuit, asume piso seco (μ=0.9)", lambda seed: PurePursuit(0.9)),
     "prudente": ("Pure pursuit, asume lluvia (μ=0.5)", lambda seed: PurePursuit(0.5)),
     "aleatoria": ("Acciones al azar", lambda seed: Aleatoria(seed)),
+    "qlearning": ("Agente Q-learning entrenado (tabla)", lambda seed: _modelo("qlearning")),
+    "ppo": ("Agente PPO entrenado (red neuronal)", lambda seed: _modelo("ppo")),
 }
 
 
+def disponible(nombre):
+    return nombre in POLITICAS and (nombre not in MODELOS or MODELOS[nombre].exists())
+
+
 def crear(nombre, seed=None):
+    if not disponible(nombre):
+        raise FileNotFoundError(f"El modelo '{nombre}' no está entrenado todavía: "
+                                f"corre `dvc repro` o `rally entrenar {nombre}`")
     return POLITICAS[nombre][1](seed)

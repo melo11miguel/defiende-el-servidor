@@ -47,6 +47,7 @@
       <button id="btn-azar" title="Sortear parámetros y semilla dentro de los rangos de la ficha">🎲 Aleatorio</button>
     </div>
     <button id="btn-correr" class="primario">▶ Correr experimento</button>
+    <button id="btn-vivo" class="vivo" title="Muestra el entrenamiento que está corriendo (rally pipeline ppo --vivo)">● Ver entrenamiento en vivo</button>
     <p class="nota">Cada corrida es una simulación nueva en Python. Mismos parámetros y semilla → mismo resultado (reproducible).</p>
   </section>
 
@@ -70,6 +71,17 @@
     <div class="pestanas">
       <button data-tab="tel" class="activo">Telemetría</button>
       <button data-tab="exp">Experimentos <span id="n-exp" class="contador">0</span></button>
+      <button data-tab="apr">Aprendizaje</button>
+    </div>
+
+    <div id="tab-apr" class="oculto">
+      <div id="apr-estado" class="apr-estado">Sin entrenamiento activo. Inicia uno con
+        <code>RALLY_VIVO=1 dvc repro</code> o <code>rally pipeline ppo --vivo</code>.</div>
+      <div class="resumen-exp" id="apr-resumen"></div>
+      <small class="etiqueta">Progreso por episodio (%)</small>
+      <canvas id="curva-progreso" width="300" height="120"></canvas>
+      <small class="etiqueta">Recompensa por episodio</small>
+      <canvas id="curva-recompensa" width="300" height="90"></canvas>
     </div>
 
     <div id="tab-exp" class="oculto">
@@ -166,6 +178,7 @@
   </section>
 
   <div id="aviso"></div>
+  <div id="insignia-vivo" class="oculto"><span class="punto"></span><span id="insignia-txt">EN VIVO</span></div>
 
   <div id="resultado" class="oculto">
     <div class="tarjeta vidrio">

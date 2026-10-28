@@ -223,6 +223,22 @@ select option { background: #0f172a; }
 .resumen-exp small { display: block; font-size: 9.5px; color: var(--tenue); text-transform: uppercase; letter-spacing: .08em; }
 .resumen-exp strong { font-size: 16px; font-family: "JetBrains Mono", monospace; }
 
+/* ---------- Entrenamiento en vivo ---------- */
+button.vivo { background: rgba(244, 63, 94, .12); border-color: rgba(244, 63, 94, .45); color: #fecdd3; font-weight: 600; }
+button.vivo.activo { background: #e11d48; border-color: #e11d48; color: #fff; box-shadow: 0 0 22px rgba(225, 29, 72, .55); }
+#insignia-vivo {
+  position: fixed; top: 76px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center;
+  padding: 7px 16px; border-radius: 999px; background: rgba(15, 23, 42, .85); border: 1px solid rgba(244, 63, 94, .6);
+  font-size: 13px; font-weight: 700; letter-spacing: .04em; color: #fecdd3; box-shadow: 0 0 30px rgba(225, 29, 72, .35);
+}
+#insignia-vivo .punto { width: 10px; height: 10px; border-radius: 50%; background: #f43f5e; animation: latido .7s infinite alternate; box-shadow: 0 0 10px #f43f5e; }
+#tab-apr { display: flex; flex-direction: column; gap: 6px; }
+#tab-apr.oculto { display: none !important; }
+#curva-progreso, #curva-recompensa { width: 100%; background: rgba(0, 0, 0, .2); border-radius: 8px; }
+.apr-estado { font-size: 12px; color: var(--tenue); line-height: 1.45; }
+.apr-estado code { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #fda4af; background: rgba(0,0,0,.3); padding: 1px 5px; border-radius: 5px; }
+.apr-estado.activo { color: #fecdd3; }
+
 /* Modo escena limpia (botón 👁 o tecla H) */
 body.limpio #panel-control, body.limpio #telemetria, body.limpio #instrumentos,
 body.limpio #minimapa-caja, body.limpio #ayuda { opacity: 0; pointer-events: none; }
