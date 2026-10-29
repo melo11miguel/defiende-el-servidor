@@ -41,12 +41,26 @@ def _escribir_json(ruta, datos):
     ruta.write_text(json.dumps(datos, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _config_ambiente():
+    """Configuración completa del ambiente (params.yaml + valores por defecto) y su huella."""
+    import dataclasses
+    import hashlib
+
+    cfg = dataclasses.asdict(AutonomousRallyEnv(**params()["ambiente"]).cfg)
+    h = hashlib.sha1(json.dumps(cfg, sort_keys=True).encode())
+    for arr in (track.XS, track.YS):
+        h.update(np.ascontiguousarray(arr).tobytes())
+    return cfg, h.hexdigest()[:12]
+
+
 def _run(nombre, p_etapa, extra_tags=None):
     seguimiento.iniciar()
     run = mlflow.start_run(run_name=nombre)
-    mlflow.set_tags({"etapa": nombre, "ambiente_version": VERSION, **seguimiento.etiquetas_git(),
-                     **(extra_tags or {})})
-    mlflow.log_params(seguimiento.aplanar(p_etapa))
+    cfg, huella = _config_ambiente()
+    mlflow.set_tags({"etapa": nombre, "ambiente_version": VERSION, "ambiente_huella": huella,
+                     **seguimiento.etiquetas_git(), **(extra_tags or {})})
+    # Parámetros de la etapa + toda la configuración del ambiente (física, recompensa, límites)
+    mlflow.log_params({**seguimiento.aplanar(p_etapa), **seguimiento.aplanar(cfg, "env.")})
     return run
 
 
@@ -107,7 +121,7 @@ def etapa_datos():
 # ----------------------------------------------------------------- modelos en MLflow
 
 class _PilotoPyfunc(mlflow.pyfunc.PythonModel):
-    """Envoltura MLflow: recibe observaciones (N×16) y devuelve acciones (N×2)."""
+    """Envoltura MLflow: recibe observaciones (N×19) y devuelve acciones (N×2)."""
 
     def __init__(self, tipo):
         self.tipo = tipo
@@ -130,20 +144,26 @@ def _registrar_modelo(tipo, archivo, ejemplo):
     info = mlflow.pyfunc.log_model(
         name="modelo", python_model=_PilotoPyfunc(tipo), artifacts={"modelo": str(archivo)},
         input_example=ejemplo, registered_model_name=seguimiento.MODELOS[tipo],
-        pip_requirements=["autonomous-rally", "stable-baselines3", "torch", "numpy"],
+        # El paquete no está en PyPI: se instala desde el repositorio del grupo
+        pip_requirements=["autonomous-rally @ git+https://github.com/melo11miguel/defiende-el-servidor.git",
+                          "stable-baselines3", "torch", "numpy", "scipy", "gymnasium"],
     )
     return info.registered_model_version
 
 
-def _evaluador_rapido(ambiente, n=3):
-    """Evaluación corta durante el entrenamiento (3 semillas, seco y mojado)."""
+def _ejemplo_obs():
+    return np.zeros((1, AutonomousRallyEnv().observation_space.shape[0]), dtype=np.float32)
+
+
+def _evaluador_rapido(ambiente, pe, n=3):
+    """Evaluación corta durante el entrenamiento (n semillas, seco y mojado)."""
     def evaluar(modelo):
         res = {}
-        for nombre, mu in (("seco", 0.9), ("mojado", 0.5)):
+        for nombre, mu in (("seco", pe["mu_seco"]), ("mojado", pe["mu_mojado"])):
             env = AutonomousRallyEnv(**{**ambiente, "mu": mu})
             ok, prog = 0, 0.0
             for k in range(n):
-                obs, info = env.reset(seed=10_000 + k)
+                obs, info = env.reset(seed=pe["semilla_eval_rapida"] + k)
                 done = False
                 while not done:
                     a, _ = modelo.predict(obs, deterministic=True)
@@ -192,7 +212,7 @@ def etapa_qlearning(vivo=False):
         salida.mkdir(parents=True, exist_ok=True)
         ag.guardar(salida / "q_table.npz")
         version = _registrar_modelo("qlearning", salida / "q_table.npz",
-                                    np.zeros((1, 16), dtype=np.float32))
+                                    _ejemplo_obs())
         _escribir_json(salida / "info.json", {
             "algoritmo": "Q-learning", "episodios": len(hist), "mlflow_run_id": run.info.run_id,
             "mlflow_modelo": seguimiento.MODELOS["qlearning"], "mlflow_version": version,
@@ -214,10 +234,11 @@ def etapa_ppo(vivo=False):
     t0 = time.time()
     with _run("ppo", pp, {"algoritmo": "PPO"}) as run:
         mlflow.log_input(_dataset_mlflow(), context="demostraciones")
-        _, n_ep = ppo.entrenar(amb, pp, DEMOS, salida, grabador, _evaluador_rapido(amb))
-        version = _registrar_modelo("ppo", salida / "modelo.zip", np.zeros((1, 16), dtype=np.float32))
+        _, n_ep = ppo.entrenar(amb, pp, DEMOS, salida, grabador, _evaluador_rapido(amb, p["evaluacion"]))
+        version = _registrar_modelo("ppo", salida / "modelo.zip", _ejemplo_obs())
         info = json.loads((salida / "info.json").read_text(encoding="utf-8"))
         info.update({"mlflow_run_id": run.info.run_id, "mlflow_modelo": seguimiento.MODELOS["ppo"],
+                     "ambiente_version": VERSION, "ambiente_huella": _config_ambiente()[1],
                      "mlflow_version": version, "segundos": round(time.time() - t0, 1)})
         _escribir_json(salida / "info.json", info)
     print(f"PPO listo: {salida} ({n_ep} episodios, MLflow {seguimiento.MODELOS['ppo']} v{version})")
@@ -318,7 +339,13 @@ def etapa_registrar():
         if not info_path.exists() or tipo not in ev["resultados"]:
             continue
         info = json.loads(info_path.read_text(encoding="utf-8"))
-        version = str(info["mlflow_version"])
+        # mlflow.db no se versiona: la versión se busca por el run_id guardado en info.json
+        # (que sí está en DVC). Si no existe en este MLflow, no se puede etiquetar.
+        encontradas = cliente.search_model_versions(f"run_id='{info['mlflow_run_id']}'")
+        if not encontradas:
+            print(f"  {nombre}: la corrida {info['mlflow_run_id']} no está en este MLflow; se omite")
+            continue
+        version = str(encontradas[0].version)
         m = ev["resultados"][tipo]
         ver = ev["veredictos"].get(tipo, {})
         for c, met in m.items():
@@ -328,12 +355,15 @@ def etapa_registrar():
         cliente.set_model_version_tag(nombre, version, "protocolo_aceptado", str(ver.get("aceptado")))
         # Champion: la versión con más vueltas completas (seco + mojado); empate → menor tiempo
         puntaje = m["seco"]["vueltas_pct"] + m["mojado"]["vueltas_pct"]
+        t_nuevo = m["seco"]["tiempo_mediano_s"] or float("inf")
         try:
             actual = cliente.get_model_version_by_alias(nombre, "champion")
             p_actual = float(actual.tags.get("seco.vueltas_pct", 0)) + float(actual.tags.get("mojado.vueltas_pct", 0))
+            t_actual = float(actual.tags.get("seco.tiempo_mediano_s", "inf"))
         except Exception:
-            actual, p_actual = None, -1
-        alias = "champion" if (actual is None or actual.version == version or puntaje >= p_actual) else "challenger"
+            actual, p_actual, t_actual = None, -1, float("inf")
+        gana = puntaje > p_actual or (puntaje == p_actual and t_nuevo < t_actual)
+        alias = "champion" if (actual is None or actual.version == version or gana) else "challenger"
         cliente.set_registered_model_alias(nombre, alias, version)
         registro[tipo] = {"modelo": nombre, "version": version, "alias": alias, "puntaje": puntaje,
                           "protocolo_aceptado": ver.get("aceptado")}

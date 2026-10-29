@@ -1,5 +1,6 @@
 # Pipeline de MLOps de Autonomous Rally. Correr todo:  dvc repro
 # Ver el grafo:  dvc dag      Ver métricas:  dvc metrics show
+# Cada etapa depende del código que la ejecuta: si cambia, DVC la rehace.
 
 stages:
   datos:
@@ -29,6 +30,7 @@ stages:
       - data/processed/demos.npz
       - src/rally/env.py
       - src/rally/track.py
+      - src/rally/pipeline.py
       - src/rally/agentes/qlearning.py
       - src/rally/agentes/discreto.py
     params:
@@ -43,10 +45,14 @@ stages:
       - data/processed/demos.npz
       - src/rally/env.py
       - src/rally/track.py
+      - src/rally/pipeline.py
       - src/rally/agentes/ppo.py
     params:
       - ambiente
       - ppo
+      - evaluacion.mu_seco
+      - evaluacion.mu_mojado
+      - evaluacion.semilla_eval_rapida
     outs:
       - models/ppo
 
@@ -59,6 +65,10 @@ stages:
       - src/rally/env.py
       - src/rally/track.py
       - src/rally/policies.py
+      - src/rally/pipeline.py
+      - src/rally/agentes/ppo.py
+      - src/rally/agentes/qlearning.py
+      - src/rally/agentes/discreto.py
     params:
       - ambiente
       - evaluacion
@@ -72,6 +82,10 @@ stages:
       - metrics/evaluacion.json
       - models/qlearning
       - models/ppo
+      - src/rally/pipeline.py
+      - src/rally/agentes/seguimiento.py
+    params:
+      - evaluacion
     metrics:
       - metrics/registro.json:
           cache: false

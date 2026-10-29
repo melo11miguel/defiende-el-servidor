@@ -65,8 +65,8 @@ Agente de aprendizaje por refuerzo que maneja un carro en un circuito urbano de
 1 049 m con 18 curvas, entrenado con **PPO** (Stable-Baselines3 + PyTorch) tras un
 preentrenamiento por imitación. Proyecto del curso de MLOps.
 
-- Ambiente: `AutonomousRally-v0` (Gymnasium), observación de 16 valores
-  (velocidad, giro, rumbo, desvío, 7 rayos y 3 notas de curvatura), acción continua
+- Ambiente: `AutonomousRally-v0` (Gymnasium) v{info.get("ambiente_version", "0.2")}, observación de 19 valores
+  (velocidad, giro, rumbo, desvío, 7 rayos, 3 notas de curvatura y sensor de agarre), acción continua
   `[acelerador, dirección]` en [-1, 1].
 - Entrenamiento: {info.get('pasos')} pasos, {info.get('episodios')} episodios,
   adherencia aleatoria μ ∈ [{params['ppo']['mu_min']}, {params['ppo']['mu_max']}].
@@ -95,14 +95,30 @@ accion, _ = model.predict(obs, deterministic=True)
 """
 
 
+def _verificar_dvc():
+    """No publica si el modelo o las métricas no corresponden al último `dvc repro`."""
+    import subprocess
+
+    try:
+        salida = subprocess.check_output(["dvc", "status", "ppo", "evaluar"], text=True,
+                                         stderr=subprocess.STDOUT)
+    except (OSError, subprocess.CalledProcessError) as e:
+        raise SystemExit(f"No se pudo verificar con DVC: {e}")
+    if "up to date" not in salida.lower():
+        raise SystemExit("El modelo o las métricas no están al día con DVC. Corre `dvc repro` antes "
+                         f"de publicar.\n{salida}")
+
+
 def publicar(repo_id, privado=True):
     from huggingface_hub import HfApi
 
+    _verificar_dvc()
     info = json.loads(Path("models/ppo/info.json").read_text(encoding="utf-8"))
     ev = json.loads(Path("metrics/evaluacion.json").read_text(encoding="utf-8"))
     params = yaml.safe_load(Path("params.yaml").read_text(encoding="utf-8"))
     api = HfApi(token=_token())
     api.create_repo(repo_id, private=privado, exist_ok=True)
+    api.update_repo_settings(repo_id, private=privado)  # si el repo ya existía, aplica la visibilidad
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         shutil.copy("models/ppo/modelo.zip", tmp / "modelo.zip")
@@ -114,5 +130,8 @@ def publicar(repo_id, privado=True):
         commit = api.upload_folder(repo_id=repo_id, folder_path=tmp,
                                    commit_message=f"Modelo PPO v{version} (MLflow)")
     if version:
-        api.create_tag(repo_id, tag=f"v{version}", exist_ok=True)
+        # La etiqueta apunta a este commit; si ya existe (otra máquina con otro mlflow.db),
+        # falla en vez de quedar apuntando a un modelo viejo.
+        api.create_tag(repo_id, tag=f"v{version}", revision=commit.oid,
+                       tag_message=f"MLflow run {info.get('mlflow_run_id')}", exist_ok=False)
     return f"https://huggingface.co/{repo_id}", commit

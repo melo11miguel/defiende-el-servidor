@@ -251,18 +251,28 @@ def _cargar_grilla():
     import os
     from pathlib import Path
 
-    clave = hashlib.sha1(repr((VERTICES, SAMPLE, GRID_RES, MARGIN)).encode()).hexdigest()[:12]
-    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "rally" / f"grilla-{clave}.npy"
+    # La clave depende de la geometría ya muestreada: si cambia el trazado o el
+    # algoritmo, cambia la clave y la grilla se recalcula.
+    h = hashlib.sha1()
+    for arr in (XS, YS, HS):
+        h.update(np.ascontiguousarray(arr).tobytes())
+    h.update(repr((GRID_RES, MAP_X, MAP_Y)).encode())
+    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "rally" / f"grilla-{h.hexdigest()[:16]}.npy"
     if cache.exists():
-        _grid = np.load(cache)
-        return _grid
+        try:
+            _grid = np.load(cache)
+            return _grid
+        except (OSError, ValueError, EOFError):
+            pass  # archivo dañado: se recalcula
     gx = np.arange(-MAP_X, MAP_X + GRID_RES, GRID_RES)
     gy = np.arange(-MAP_Y, MAP_Y + GRID_RES, GRID_RES)
     mx, my = np.meshgrid(gx, gy)
     _grid = np.abs(lateral(mx, my)).astype(np.float32)
     try:
         cache.parent.mkdir(parents=True, exist_ok=True)
-        np.save(cache, _grid)
+        tmp = cache.with_name(f".{cache.stem}.{os.getpid()}.tmp.npy")
+        np.save(tmp, _grid)
+        os.replace(tmp, cache)  # escritura atómica: varios procesos pueden arrancar a la vez
     except OSError:
         pass
     return _grid
@@ -305,16 +315,17 @@ def raycast(x, y, psi, angles, r_max, half_width, step=0.25, refine=7):
     return np.where(any_hit, hi, r_max)
 
 
+_N_LARGO, _N_ANCHO = 9, 5  # puntos del contorno: cada 0.5 m en el largo, ~0.45 m en el ancho
+
+
 def car_collides(x, y, psi, length, width, half_width):
-    """True si el contorno del carro pasa el muro."""
+    """True si algún punto del contorno del carro (muestreado cada ~0.5 m) pasa el muro."""
+    lx = np.linspace(-length / 2, length / 2, _N_LARGO)
+    ly = np.linspace(-width / 2, width / 2, _N_ANCHO)
+    bx = np.concatenate([lx, lx, np.full(_N_ANCHO, -length / 2), np.full(_N_ANCHO, length / 2)])
+    by = np.concatenate([np.full(_N_LARGO, -width / 2), np.full(_N_LARGO, width / 2), ly, ly])
     c, s = math.cos(psi), math.sin(psi)
-    px, py = [], []
-    for fx in (-0.5, 0.0, 0.5):
-        for fy in (-0.5, 0.5):
-            lx, ly = fx * length, fy * width
-            px.append(x + lx * c - ly * s)
-            py.append(y + lx * s + ly * c)
-    return bool(outside_walls(np.array(px), np.array(py), half_width).any())
+    return bool(outside_walls(x + bx * c - by * s, y + bx * s + by * c, half_width).any())
 
 
 def check_design(max_width=12.0):

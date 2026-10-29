@@ -39,7 +39,7 @@ def crear_env(ambiente, ppo_params, rank):
         env = AutonomousRallyEnv(**ambiente)
         if ppo_params.get("dominio_aleatorio"):
             env = AdherenciaAleatoria(env, ppo_params["mu_min"], ppo_params["mu_max"])
-        env.reset(seed=ppo_params["semilla"] * 1000 + rank)
+        env.reset(seed=200_000 + ppo_params["semilla"] * 1000 + rank)  # lejos de las semillas de evaluación
         return env
     return _f
 

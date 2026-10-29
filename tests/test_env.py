@@ -121,10 +121,56 @@ def test_quedarse_quieto_termina_estancado(env):
     assert info["outcome"] == "estancado"
 
 
-def test_choque_cuesta_mas_que_quedarse_quieto():
-    """Chocar a propósito nunca conviene más que quedarse quieto hasta el estancamiento."""
-    cfg = AutonomousRallyEnv().cfg
-    assert cfg.r_fail < cfg.r_time * cfg.stall_limit
+def test_estancarse_no_es_salida_barata(env):
+    """Quedarse quieto cuesta al menos lo mismo que chocar (si no, el agente se detiene
+    antes de las curvas difíciles: lo encontró la revisión en el Q-learning v1)."""
+    env.reset(seed=0)
+    total, done = 0.0, False
+    while not done:
+        _, r, term, trunc, info = env.step([0.0, 0.0])
+        total += r
+        done = term or trunc
+    assert info["outcome"] == "estancado"
+    assert total <= env.cfg.r_fail
+
+
+def test_puerta_cruzada_en_el_escape_cuenta_al_volver(env):
+    """Cruzar la puerta pisando la zona de escape no la pierde: cuenta al volver al asfalto."""
+    s = track.GATES[0][0]
+    env.reset(options={"state": {**_en_pista(s - 0.5, d=4.2, dpsi_deg=-8), "v": 10.0,
+                                 "s_cum": s - 0.5}})
+    pol = policies.crear("experto")
+    obs, info = env.observation_space.sample(), env._info()
+    for _ in range(40):
+        obs, _, term, trunc, info = env.step(pol(obs, info))
+        if term or trunc:
+            break
+    assert info["next_cp"] == 2
+    assert info["outcome"] is None
+
+
+def test_sensor_de_agarre_detecta_lluvia():
+    """Frenar fuerte con lluvia satura las llantas y el agarre estimado baja a ~μ."""
+    seco, mojado = AutonomousRallyEnv(mu=0.9), AutonomousRallyEnv(mu=0.5)
+    for e in (seco, mojado):
+        e.reset(options={"state": {**_en_pista(50.0), "v": 20.0, "s_cum": 50.0}})
+        e.step([-1.0, 0.0])
+    assert mojado.mu_est == pytest.approx(0.5, abs=0.02)
+    assert seco.mu_est > 1.0  # en seco el freno no satura: sigue sin medirse un límite
+    obs = mojado._obs()
+    assert obs.shape == (19,) and obs[17] == 1.0
+
+
+def test_parametro_desconocido_falla():
+    with pytest.raises(TypeError):
+        AutonomousRallyEnv(track_widht=10)
+
+
+def test_qlearning_evaluacion_determinista():
+    from rally.agentes.qlearning import AgenteQ
+    ag = AgenteQ(seed=0)  # tabla en cero: todo empata
+    obs = AutonomousRallyEnv().reset(seed=0)[0]
+    assert all((ag(obs, None) == ag(obs, None)).all() for _ in range(5))
 
 
 def test_salto_de_proyeccion_no_es_avance(env):

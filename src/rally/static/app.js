@@ -702,7 +702,7 @@ function pintarExperimentos() {
     <div><small>Mejor vuelta</small><strong>${mejor}</strong></div></div>`;
   const filas = experimentos.slice().reverse().map((e) => {
     const p = e.params, bien = e.resultado === "exito";
-    return `<button class="exp ${ep && e.id === ep.id ? "actual" : ""}" data-id="${e.id}">
+    return `<button class="exp ${ep && !ep.vivo && e.id === ep.id ? "actual" : ""}" data-id="${e.id}">
       <span class="num">#${e.id}</span>
       <span class="res ${bien ? "ok" : "mal"}">${NOMBRE_FIN[e.resultado]}</span>
       <span class="met">${e.tiempo.toFixed(1)} s · ${e.recompensa >= 0 ? "+" : ""}${e.recompensa.toFixed(1)}</span>
@@ -731,12 +731,19 @@ async function cargarEpisodio() {
   const r = await fetch(`/api/episodio?${q}`);
   const nuevo = await r.json();
   experimentos.push({ ...nuevo, episodio: nuevo });
+  // Si mientras tanto se entró al modo en vivo y ya se ve un episodio del entrenamiento,
+  // no se reemplaza: solo queda en el registro.
+  if (modoVivo && ep && ep.vivo) { pintarExperimentos(); $("cargando").classList.add("oculto"); return; }
   mostrarEpisodio(nuevo);
 }
 
 function mostrarEpisodio(nuevo) {
   ep = nuevo;
-  mu = ep.params.mu;
+  // Los episodios del entrenamiento en vivo traen el ancho como `track_width` (nombre
+  // del ambiente). Sin esto la pista y el fondo del minimapa se construían con ancho
+  // indefinido (NaN) y el minimapa quedaba casi vacío.
+  ep.params.ancho = ep.params.ancho ?? ep.params.track_width ?? pista.ancho;
+  mu = ep.params.mu ?? pista.rangos.mu.base;
   if (ep.params.ancho !== anchoConstruido) construirPista(ep.params.ancho);
   $("t-experimento").textContent = ep.vivo ? `ENTRENAMIENTO · EPISODIO #${ep.id}` : `EXPERIMENTO #${ep.id}`;
   pintarExperimentos();
@@ -780,7 +787,7 @@ function animar() {
       tiempo = dur;
       reproduciendo = false;
       $("btn-play").textContent = "▶";
-      if (!terminado) { terminado = true; if (!ep.vivo) setTimeout(mostrarResultado, 700); }
+      if (!terminado) { terminado = true; if (ep.vivo) mostrarFinVivo(); else setTimeout(mostrarResultado, 700); }
     }
   }
   if (tiempo < dur) terminado = false;
@@ -864,11 +871,45 @@ function animar() {
 // ------------------------------------------------------------------ entrenamiento en vivo
 // El entrenamiento (Python) guarda cada episodio terminado en runs/vivo/. Aquí se
 // consulta cada 1.5 s y se reproduce el más reciente: se ve al modelo mejorar.
-let modoVivo = false, vivoTimer = null, vivoUltimo = 0;
+let modoVivo = false, vivoTimer = null, vivoUltimo = 0, velocidadPrevia = 1, finVivoTimer = null;
+const NOMBRE_AGENTE = { ppo: "PPO · red neuronal", qlearning: "Q-learning · tabla" };
+const nombreAgente = (a) => NOMBRE_AGENTE[a] || String(a || "agente").toUpperCase();
+
+// Aviso breve en la telemetría con el resultado del episodio en vivo que se acaba de ver
+// (reemplaza a la tarjeta de resultado, que en vivo taparía la escena cada episodio)
+function mostrarFinVivo() {
+  if (!modoVivo || !ep || !ep.vivo) return;
+  const ok = ep.resultado === "exito", last = ep.frames[ep.frames.length - 1];
+  const prog = ep.progreso ?? 100 * last.s / pista.largo;
+  const R = ep.recompensa ?? last.R;
+  $("fin-vivo").className = `fin-vivo ${ok ? "ok" : "mal"}`;
+  $("fin-vivo-icono").textContent = { exito: "🏁", choque: "💥", salida: "🌀", estancado: "⏸", tiempo: "⏱" }[ep.resultado] || "■";
+  $("fin-vivo-titulo").textContent = `Episodio #${ep.id} · ${{ exito: "Vuelta completa", choque: "Choque", salida: "Salida de pista", estancado: "Estancado", tiempo: "Sin tiempo" }[ep.resultado] || ep.resultado}`;
+  $("fin-vivo-datos").textContent = `${(ep.tiempo ?? last.t).toFixed(1)} s · ${R >= 0 ? "+" : ""}${R.toFixed(1)} pts · ${Math.round(prog)}% de la vuelta`;
+  clearTimeout(finVivoTimer);
+  finVivoTimer = setTimeout(ocultarFinVivo, 6000);
+}
+function ocultarFinVivo() {
+  clearTimeout(finVivoTimer);
+  $("fin-vivo").classList.add("oculto");
+}
+
+// Panel izquierdo en modo en vivo: quién maneja y controles deshabilitados
+function pintarManejando(c) {
+  if (!c) {
+    $("manejando-agente").textContent = "Esperando entrenamiento…";
+    $("manejando-detalle").textContent = "aún no hay episodios";
+    return;
+  }
+  const ult = c.episodios[c.episodios.length - 1];
+  $("manejando-agente").textContent = nombreAgente(c.agente);
+  $("manejando-detalle").textContent = `(entrenando) · episodio ${ult.episodio}`;
+}
 
 async function sondearVivo() {
   try {
     const c = await (await fetch("/api/vivo/curva")).json();
+    if (!modoVivo) return;  // se salió del modo en vivo mientras se esperaba la respuesta
     if (!c.episodios || !c.episodios.length) { estadoVivo(null); return; }
     estadoVivo(c);
     dibujarCurvas(c.episodios);
@@ -877,13 +918,14 @@ async function sondearVivo() {
     const libre = !ep || !ep.vivo || !reproduciendo || tiempo >= fin - 0.05;
     if (ult.episodio > vivoUltimo && libre) {
       const e = await (await fetch("/api/vivo/episodio")).json();
-      if (e.frames) { vivoUltimo = e.id; e.vivo = true; mostrarEpisodio(e); }
+      if (e.frames && modoVivo) { vivoUltimo = e.id; e.vivo = true; mostrarEpisodio(e); }
     }
   } catch (err) { /* el entrenamiento puede estar escribiendo; se reintenta */ }
 }
 
 function estadoVivo(c) {
   const el = $("apr-estado");
+  pintarManejando(c);
   if (!c) {
     el.className = "apr-estado";
     $("insignia-txt").textContent = "EN VIVO · esperando entrenamiento…";
@@ -932,13 +974,27 @@ function alternarVivo() {
   $("btn-vivo").classList.toggle("activo", modoVivo);
   $("btn-vivo").textContent = modoVivo ? "■ Salir del modo en vivo" : "● Ver entrenamiento en vivo";
   $("insignia-vivo").classList.toggle("oculto", !modoVivo);
+  // Piloto, piso, parámetros y semilla no aplican mientras se ve el entrenamiento
+  document.body.classList.toggle("en-vivo", modoVivo);
+  $("controles-experimento").disabled = modoVivo;
+  $("manejando").classList.toggle("oculto", !modoVivo);
   clearInterval(vivoTimer);
+  ocultarFinVivo();
   if (modoVivo) {
+    pintarManejando(null);
+    velocidadPrevia = velocidad;
     document.querySelector('.pestanas button[data-tab="apr"]').click();
     $("resultado").classList.add("oculto");
     document.querySelector('#sel-vel button[data-v="2"]').click();
     sondearVivo();
     vivoTimer = setInterval(sondearVivo, 1500);
+  } else {
+    // Volver a la normalidad: velocidad previa y último experimento propio (si lo hay)
+    document.querySelector(`#sel-vel button[data-v="${velocidadPrevia}"]`)?.click();
+    document.querySelector('.pestanas button[data-tab="tel"]').click();
+    vivoUltimo = 0;
+    const ultimo = experimentos[experimentos.length - 1];
+    if (ep && ep.vivo && ultimo) verExperimento(ultimo.id);
   }
 }
 

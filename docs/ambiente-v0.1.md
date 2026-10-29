@@ -1,12 +1,16 @@
 # Ambiente v0.1 — Autonomous Rally · Circuito Mónaco
 
-> Equipo: _______ · Versión 0.1 (circuito Mónaco) · 28 oct 2026
+> Equipo: _______ · Versión del ambiente **0.2** (circuito Mónaco + sensor de agarre) · 28 oct 2026
 > Mapa: [mapa-ambiente-v0.1.svg](mapa-ambiente-v0.1.svg), generado desde el código con `rally mapa --svg`.
 > Ficha original del curso: [ficha-autonomous-rally.png](ficha-autonomous-rally.png)
->
-> **Historial:** la primera versión usaba una pista rectangular de 239 m. Está guardada en git con la
-> etiqueta `ambiente-v0.1` (`git checkout ambiente-v0.1`). Esta versión la reemplaza por un circuito
-> urbano inspirado en Mónaco.
+
+**Historial de versiones** (cada una recuperable desde git):
+
+| Versión | Cambios | Dónde |
+|---|---|---|
+| Pista rectangular | Pista de 239 m, 3 checkpoints | etiqueta `ambiente-v0.1` |
+| 0.1-monaco | Circuito de Mónaco, muros, notas del copiloto (16 observaciones). Modelo entrenado: `modelo-v1` | etiqueta `modelo-v1` |
+| **0.2** | Sensor de agarre (19 observaciones); correcciones de una revisión de código: estancarse cuesta −50, la puerta cruzada pisando el escape cuenta al volver, círculo de fricción con la velocidad nueva, contorno del carro cada 0.5 m | esta ficha |
 
 ## Mision y mapa
 
@@ -88,19 +92,22 @@ automáticas lo verifican, junto con que dos tramos no vecinos nunca queden a me
 | Variable | Significado | Unidad | Rango | ¿Lo ve el agente? |
 |---|---|---|---|---|
 | x, y | Posición del centro del carro | m | mapa | No |
-| ψ | Orientación (0 = este, antihorario positivo) | rad | (−π, π] | No (solo el error respecto a la pista) |
+| ψ | Orientación (0 = este, antihorario positivo) | rad | [−π, π) | No (solo el error respecto a la pista) |
 | v | Velocidad hacia adelante | m/s | [0, 25] | Sí |
 | ω | Velocidad de giro | rad/s | [−2, 2] | Sí |
-| s | Progreso acumulado sobre la línea central | m | [0, 1 048.6] | No |
+| s | Progreso acumulado sobre la línea central (negativo si arranca detrás de la línea; pasa de 1 048.6 al cruzar la meta) | m | [−1, ~1 052] | No |
 | s_best | Máximo progreso válido alcanzado | m | [0, 1 048.6] | No |
 | d | Desvío lateral del centro (+ = izquierda) | m | [−6, 6] | Sí (normalizado) |
-| next_cp | Siguiente puerta que hay que cruzar | entero | {1…7} | Indirectamente (dirección) |
+| next_cp | Siguiente puerta que hay que cruzar (8 = vuelta terminada) | entero | {1…8} | Indirectamente (dirección) |
 | t | Tiempo del episodio | s | [0, 180] | No |
 | t_fuera | Tiempo seguido fuera del asfalto | s | [0, 1.0] | No |
+| uso de agarre | Aceleración de las llantas / (μ·g) | — | [0, 1] | Sí |
+| derrape | Si las llantas están en su límite en este paso | bool | {0, 1} | Sí |
+| μ estimado | Menor agarre medido en el episodio (empieza en 1.2 = sin medir) | — | [0, 1.2] | Sí |
 
 ## Observaciones y acciones
 
-### Observación (vector de 16 valores normalizados)
+### Observación (vector de 19 valores normalizados)
 
 | # | Componente | Cálculo | Rango |
 |---|---|---|---|
@@ -111,10 +118,19 @@ automáticas lo verifican, junto con que dos tramos no vecinos nunca queden a me
 | 5 | Error de rumbo respecto a la pista | e_ψ / π | [−1, 1] |
 | 6–12 | 7 rayos a −90°, −60°, −30°, 0°, +30°, +60° y +90° | distancia al borde de pista o al muro / r_max | [0, 1] |
 | 13–15 | **Notas del copiloto** | curvatura de la pista a 10, 25 y 50 m adelante × 9.5 m (+ izquierda, − derecha) | [−1, 1] |
+| 16 | **Uso de agarre** | aceleración de las llantas / (μ·g), recortado a 1 | [0, 1] |
+| 17 | **Derrape** | 1 si las llantas están en su límite en este paso | {0, 1} |
+| 18 | **Agarre estimado** | menor μ medido en el episodio / 1.2 | [0, 1] |
 
-Las notas del copiloto son nuevas en esta versión. En el rally real el copiloto le lee al piloto las
-curvas que vienen ("derecha cerrada en 50"). Sin ellas, con rayos de 20 m, el agente no puede saber a
-tiempo que viene la horquilla.
+**Notas del copiloto:** en el rally real el copiloto le lee al piloto las curvas que vienen ("derecha
+cerrada en 50"). Sin ellas, con rayos de 20 m, el agente no puede saber a tiempo que viene la horquilla.
+
+**Sensor de agarre (v0.2):** el modelo v1 chocaba con lluvia en Sainte Dévote porque no tenía forma de
+saber que el piso estaba mojado. El agente sigue **sin ver μ directamente**, pero ahora tiene lo que mide
+un control de tracción real. Cuando las llantas llegan a su límite (al frenar o al girar fuerte), el
+simulador mide el agarre disponible y lo guarda como "agarre estimado". Por ejemplo, en mojado una
+frenada fuerte satura las llantas (8 m/s² > 0.5·g) y revela μ ≈ 0.5; en seco no se satura (8 < 0.9·g)
+y el estimado sigue en "sin medir". Así el agente puede aprender a "probar los frenos" en la recta.
 
 ### Acción (continua, 2 controles)
 
@@ -130,19 +146,25 @@ Para Q-learning con tabla, las acciones se vuelven discretas: 3 de pedal × 5 de
 En cada paso (dt = 0.1 s), el simulador aplica estas reglas en orden:
 
 1. Recorta las acciones a [−1, 1] y calcula δ = u_dir · 30°.
-2. Calcula la aceleración longitudinal: `u_acel·a_max` o `u_acel·b_max`, menos `k·v`.
-3. Elige la adherencia: μ en el asfalto (|d| ≤ w/2) o μ_e = 0.35 en la zona de escape.
-4. Aplica el **círculo de fricción**: la aceleración total no puede pasar μ·g. Si la curva pide más
-   aceleración lateral de la disponible, el carro **subvira** (gira menos de lo ordenado y se abre).
-5. Integra la bicicleta cinemática: v, ψ, x, y.
+2. Elige la adherencia: μ en el asfalto (|d| ≤ w/2) o μ_e = 0.35 en la zona de escape.
+3. Calcula la fuerza de las llantas: `u_acel·a_max` o `u_acel·b_max`, recortada a μ·g. Luego resta la
+   resistencia `k·v` (no es fuerza de las llantas, así que no gasta agarre) y obtiene la velocidad nueva v'.
+4. Aplica el **círculo de fricción** con la velocidad nueva v' (la misma con la que se integra el giro):
+   la aceleración de las llantas no puede pasar μ·g. Si la curva pide más aceleración lateral de la
+   disponible, el carro **subvira** (gira menos de lo ordenado y se abre). Si las llantas llegan a su
+   límite, se marca derrape y se actualiza el agarre estimado.
+5. Integra la bicicleta cinemática: ψ, x, y.
 6. Proyecta la posición sobre la línea central (KD-tree sobre muestras cada 0.25 m) para obtener s y d.
    Un salto de s mayor que lo que se puede recorrer en un paso se ignora: es una proyección sobre otro
    tramo cercano, como en la horquilla.
 7. Aplica las reglas:
-   - **Checkpoint:** cuenta si s cruza la puerta de `next_cp` hacia adelante y el carro está en el asfalto.
+   - **Checkpoint:** cuenta cuando el carro está en el asfalto y ya pasó la puerta de `next_cp` hace
+     menos de 30 m (lo que se recorre en el segundo máximo fuera de pista). Así, si cruzó la puerta
+     pisando el escape, cuenta al volver al asfalto; pero aparecer mucho más adelante es un atajo y no cuenta.
    - **Progreso:** se paga el nuevo máximo de s, pero **nunca más de lo que el carro avanzó en ese paso**
      ni más allá de la próxima puerta sin cruzarla.
-   - **Choque:** si cualquier punto del contorno del carro pasa el muro (|d| > w/2 + 2 m).
+   - **Choque:** si algún punto del contorno del carro (muestreado cada ~0.5 m) pasa el muro
+     (|d| > w/2 + 2 m).
    - **Fuera de pista:** si el centro del carro sale del asfalto, suma tiempo fuera.
 
 ## Recompensa
@@ -157,7 +179,7 @@ En cada paso (dt = 0.1 s), el simulador aplica estas reglas en orden:
 | r_tiempo | −0.05 por paso | Siempre |
 | r_fuera | −1.0 por paso | Mientras el centro del carro está fuera del asfalto |
 | r_suave | −0.2·\|Δu_dir\| − 0.05·\|Δu_acel\| | Penaliza los cambios bruscos de mando |
-| r_fin | −50 | Al chocar o al salir del asfalto por ≥ 1 s |
+| r_fin | −50 | Al chocar, al salir del asfalto por ≥ 1 s o al quedar estancado 10 s |
 
 **Escala:** una vuelta limpia en ~78 s da ≈ +105 (progreso) + 60 (CP) + 50 (vuelta) − 39 (tiempo) −
 (suavidad) ≈ **+170**. El piloto experto obtiene +169.6 en seco.
@@ -169,14 +191,23 @@ En cada paso (dt = 0.1 s), el simulador aplica estas reglas en orden:
 | **Éxito** | Cruzar CP1 a CP6 y la meta en orden, en el asfalto | `terminated` |
 | **Choque** | El contorno del carro toca el muro | `terminated`, −50 |
 | **Salida de pista** | 10 pasos seguidos (1 s) con el centro fuera del asfalto | `terminated`, −50 |
-| **Estancado** | s_best no mejora en 10 s | `terminated` |
+| **Estancado** | s_best no mejora en 10 s | `terminated`, −50 |
 | **Límite de tiempo** | t = 180 s (1 800 pasos), unas 2.3 veces la vuelta experta | `truncated` |
 
 **Estado inicial:** en la línea de salida, desvío lateral U(−0.5, 0.5) m, rumbo ±U(−5°, 5°), v = 0.
 
 ## Metricas e incidente
 
-**Protocolo:** 100 episodios con semillas fijas (0–99), política en modo determinista.
+**Protocolo:** 100 episodios con semillas fijas (0–99), política en modo determinista. Las semillas de
+entrenamiento son distintas (Q-learning desde 100 000, PPO desde 200 000, dataset desde 500), así el
+modelo nunca se evalúa en los mismos arranques con los que entrenó.
+
+**Resultados del modelo v1** (`modelo-v1`, 1 millón de pasos):
+
+| Piloto | Seco: vueltas | Seco: tiempo | Mojado: vueltas | Mojado: avance |
+|---|---|---|---|---|
+| PPO (red neuronal) | 100 % | 77.6 s | 0 % | 57.6 % |
+| Q-learning (tabla) | 0 % | — | 0 % | 11.9 % |
 
 | # | Métrica | Definición |
 |---|---|---|
@@ -222,8 +253,8 @@ Recompensa = 0.1·2.002 + 10 (CP1) − 0.05 = **+10.150**.
 | Ir y volver para cobrar progreso | Se paga sobre el máximo alcanzado (s_best) | `test_ir_y_volver_no_acumula` |
 | Atajo: llegar a una puerta posterior sin pasar las anteriores | Progreso topado en la próxima puerta y solo por el avance real del paso. **Esta trampa la encontraron las pruebas en esta versión** y se corrigió | `test_atajo_no_paga` |
 | Saltar de un tramo a otro cercano (horquilla) | Los saltos de s imposibles en un paso no cuentan | `test_salto_de_proyeccion_no_es_avance` |
-| Quedarse quieto para no arriesgar | Detector de estancamiento a los 10 s | `test_quedarse_quieto_termina_estancado` |
-| Chocar a propósito para cortar penalizaciones | El choque (−50) cuesta más que quedarse quieto hasta el estancamiento (−5) | `test_choque_cuesta_mas_que_quedarse_quieto` |
+| Quedarse quieto para no arriesgar | Estancarse 10 s termina el episodio con −50, igual que chocar. **En v0.1 costaba solo −5 y el Q-learning v1 aprendió a detenerse antes de la parte difícil**; lo encontró una revisión de código | `test_estancarse_no_es_salida_barata` |
+| Cruzar una puerta pisando el escape y perderla | Cuenta al volver al asfalto (si fue hace menos de 30 m) | `test_puerta_cruzada_en_el_escape_cuenta_al_volver` |
 | Ir en reversa | No hay reversa (v ≥ 0) | `test_sin_reversa` |
 
 ### Decisiones pendientes
@@ -232,4 +263,6 @@ Recompensa = 0.1·2.002 + 10 (CP1) − 0.05 = **+10.150**.
 2. **¿El agente debe ver el tiempo restante?** Sin él, el truncamiento no es markoviano.
 3. **Pesos de r_suave:** son tentativos; si el agente se vuelve tímido hay que bajarlos.
 4. **Ruido en los rayos** como segunda perturbación.
-5. **Más vueltas o pistas aleatorias** para evitar que el agente memorice el circuito.
+5. **¿El sensor de agarre es "trampa"?** El agente no ve μ, pero sí una medición que en un carro real
+   da el control de tracción. Hay que comparar en MLflow la v1 (sin sensor) con la v2 (con sensor).
+6. **Más vueltas o pistas aleatorias** para evitar que el agente memorice el circuito.

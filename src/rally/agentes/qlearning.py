@@ -13,6 +13,9 @@ import numpy as np
 
 from rally.agentes.discreto import ACCIONES, N_ESTADOS, estado
 
+# Semillas de entrenamiento lejos de las de evaluación (0-99) y del dataset (500+)
+SEMILLA_BASE = 100_000
+
 
 class AgenteQ:
     def __init__(self, alpha=0.1, gamma=0.99, seed=0):
@@ -32,9 +35,10 @@ class AgenteQ:
         self.q[s, a] += self.alpha * (objetivo - self.q[s, a])
         self.visitas[s] += 1
 
-    # Como piloto para el visor y la evaluación (sin explorar)
+    # Como piloto para el visor y la evaluación: sin explorar y determinista
+    # (los empates se rompen siempre igual, así la evaluación es reproducible)
     def __call__(self, obs, info):
-        return ACCIONES[self.elegir(estado(obs), 0.0)]
+        return ACCIONES[int(np.argmax(self.q[estado(obs)]))]
 
     def guardar(self, ruta):
         Path(ruta).parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +62,7 @@ def entrenar(env_fn, params, grabador=None, al_terminar_episodio=None):
     for ep in range(p["episodios"]):
         frac = ep / max(p["episodios"] - 1, 1)
         eps = p["epsilon_inicial"] + (p["epsilon_final"] - p["epsilon_inicial"]) * min(1.0, frac / 0.8)
-        obs, info = env.reset(seed=p["semilla"] + ep)
+        obs, info = env.reset(seed=SEMILLA_BASE + p["semilla"] * 10_000 + ep)
         s, done, total = estado(obs), False, 0.0
         while not done:
             a = ag.elegir(s, eps)

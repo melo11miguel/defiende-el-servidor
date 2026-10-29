@@ -32,7 +32,7 @@ def etiquetas_git():
             return "desconocido"
     return {"git_commit": git("rev-parse", "HEAD"),
             "git_rama": git("rev-parse", "--abbrev-ref", "HEAD"),
-            "git_sucio": str(bool(git("status", "--porcelain", "--untracked-files=no")))}
+            "git_sucio": str(bool(git("status", "--porcelain")))}
 
 
 def aplanar(d, prefijo=""):

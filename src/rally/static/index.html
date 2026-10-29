@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Autonomous Rally · Visor 3D</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8F%81%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
@@ -28,6 +29,14 @@
         <p>AutonomousRally-v0 · Gymnasium</p>
       </div>
     </div>
+    <!-- Solo en modo en vivo: quién maneja (el agente que se está entrenando) -->
+    <div id="manejando" class="manejando oculto">
+      <small>Manejando ahora</small>
+      <strong id="manejando-agente">Esperando entrenamiento…</strong>
+      <span class="entrenando"><span class="punto"></span><span id="manejando-detalle">entrenando</span></span>
+      <p>En modo en vivo los controles no aplican: maneja el agente que se está entrenando. Sal del modo en vivo para correr tus propios experimentos.</p>
+    </div>
+    <fieldset id="controles-experimento" class="controles">
     <label class="campo">Piloto
       <select id="sel-piloto"></select>
     </label>
@@ -47,8 +56,9 @@
       <button id="btn-azar" title="Sortear parámetros y semilla dentro de los rangos de la ficha">🎲 Aleatorio</button>
     </div>
     <button id="btn-correr" class="primario">▶ Correr experimento</button>
+    </fieldset>
     <button id="btn-vivo" class="vivo" title="Muestra el entrenamiento que está corriendo (rally pipeline ppo --vivo)">● Ver entrenamiento en vivo</button>
-    <p class="nota">Cada corrida es una simulación nueva en Python. Mismos parámetros y semilla → mismo resultado (reproducible).</p>
+    <p class="nota nota-normal">Cada corrida es una simulación nueva en Python. Mismos parámetros y semilla → mismo resultado (reproducible).</p>
   </section>
 
   <!-- Cámaras -->
@@ -72,6 +82,15 @@
       <button data-tab="tel" class="activo">Telemetría</button>
       <button data-tab="exp">Experimentos <span id="n-exp" class="contador">0</span></button>
       <button data-tab="apr">Aprendizaje</button>
+    </div>
+
+    <!-- Modo en vivo: resultado del episodio que se acaba de ver -->
+    <div id="fin-vivo" class="fin-vivo oculto">
+      <span id="fin-vivo-icono" class="icono-fin">🏁</span>
+      <div>
+        <strong id="fin-vivo-titulo">Episodio #— · Vuelta completa</strong>
+        <small id="fin-vivo-datos" class="mono">—</small>
+      </div>
     </div>
 
     <div id="tab-apr" class="oculto">

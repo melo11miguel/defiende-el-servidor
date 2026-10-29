@@ -20,7 +20,7 @@ qlearning:
   semilla: 0
 
 ppo:
-  pasos: 1000000
+  pasos: 3000000        # v2: el triple de práctica
   n_envs: 12
   learning_rate: 0.0003
   n_steps: 1024
@@ -40,5 +40,6 @@ evaluacion:          # protocolo de la ficha
   semilla_inicial: 0
   mu_seco: 0.9
   mu_mojado: 0.5
+  semilla_eval_rapida: 10000   # evaluación corta durante el entrenamiento de PPO
   base: experto
   pilotos: [experto, prudente, qlearning, ppo]

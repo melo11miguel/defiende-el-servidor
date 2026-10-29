@@ -112,7 +112,8 @@ export function construirEscenario({ scene, renderer, pista, P, pared, cinta }) 
   const agua = new Water(new THREE.PlaneGeometry(3000, 3000), {
     textureWidth: 512, textureHeight: 512,
     waterNormals: new THREE.TextureLoader().load(
-      "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/textures/waternormals.jpg",
+      // El paquete npm de three no incluye examples/textures (daba 404): se toma del repo en GitHub
+      "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r170/examples/textures/waternormals.jpg",
       (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; }),
     sunDirection: new THREE.Vector3(), sunColor: 0xffe2b0, waterColor: 0x0b3a5c, distortionScale: 2.4,
     fog: true,
