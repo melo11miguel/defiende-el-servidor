@@ -905,24 +905,37 @@ const fpsEl = document.createElement("div");
 fpsEl.id = "fps";
 document.body.appendChild(fpsEl);
 let fpsAcum = 0, fpsCuadros = 0, fpsVentana = 0;
+let malos = 0, buenos = 0, espera = 0, techoRes = 9;   // techoRes: nivel que ya se probó y fue lento
+// Se llama ANTES de dibujar: cambiar el tamaño del lienzo lo borra, y si se hace después
+// de dibujar el navegador muestra ese cuadro vacío (el parpadeo negro).
 function medirFps(dt) {
   fpsAcum += dt; fpsCuadros++;
   if (fpsAcum < 1) return;
   const fps = fpsCuadros / fpsAcum;
   fpsAcum = 0; fpsCuadros = 0; fpsVentana++;
-  if (fpsVentana > 2) {                         // espera 3 s antes de ajustar (carga inicial)
-    const tope = Math.min(devicePixelRatio, Q.px), antes = resolucion;
-    if (fps < 32 && resolucion > 0.7) resolucion = Math.max(0.7, resolucion - 0.1);
-    else if (fps > 50 && resolucion < tope) resolucion = Math.min(tope, resolucion + 0.1);
-    if (resolucion !== antes) {
-      renderer.setPixelRatio(resolucion);
-      composer.setPixelRatio(resolucion);
-      composer.setSize(innerWidth, innerHeight);
-      ajustarFxaa();
-    }
-  }
   fpsEl.textContent = `${fps.toFixed(0)} FPS · ${Math.round(resolucion * 100)}% · ${Q.nombre}`;
   fpsEl.className = fps < 30 ? "lento" : "";
+  if (fpsVentana <= 3 || document.hidden) return;   // carga inicial o pestaña oculta
+  // Margen: hacen falta 3 s seguidos lentos para bajar y 5 s seguidos sobrados para subir,
+  // con una pausa de 8 s después de cada cambio. Si al subir se pone lento, ese nivel
+  // queda como techo: así no sube y baja sin parar (cada cambio da un tirón).
+  malos = fps < 30 ? malos + 1 : 0;
+  buenos = fps > 55 ? buenos + 1 : 0;
+  if (espera > 0) { espera--; return; }
+  const tope = Math.min(devicePixelRatio, Q.px, techoRes), antes = resolucion;
+  if (malos >= 3 && resolucion > 0.7) {
+    techoRes = resolucion - 0.01;
+    resolucion = Math.max(0.7, Math.round((resolucion - 0.1) * 10) / 10);
+  } else if (buenos >= 5 && resolucion + 0.1 <= tope + 1e-6) {
+    resolucion = Math.round((resolucion + 0.1) * 10) / 10;
+  }
+  if (resolucion !== antes) {
+    malos = buenos = 0; espera = 8;
+    renderer.setPixelRatio(resolucion);
+    composer.setPixelRatio(resolucion);
+    composer.setSize(innerWidth, innerHeight);
+    ajustarFxaa();
+  }
 }
 
 // ------------------------------------------------------------------ bucle
@@ -1031,8 +1044,8 @@ function animar() {
   if (!SIN.has("hud") && (hudAcum >= 0.05 || !reproduciendo)) { hudAcum = 0; actualizarHUD(est); }
   cuadro++;
   if (Q.cadaSombra > 1 && cuadro % Q.cadaSombra === 0) renderer.shadowMap.needsUpdate = true;
+  medirFps(dt);   // antes de dibujar (ver medirFps)
   if (SIN.has("post")) renderer.render(scene, cam); else composer.render();
-  medirFps(dt);
 }
 
 // ------------------------------------------------------------------ entrenamiento en vivo
