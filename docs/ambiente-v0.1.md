@@ -1,6 +1,6 @@
 # Ambiente v0.1 — Autonomous Rally · Circuito Mónaco
 
-> Equipo: _______ · Versión del ambiente **0.2** (circuito Mónaco + sensor de agarre) · 28 oct 2026
+> Equipo: _______ · Versión del ambiente **0.3** (circuito Mónaco + sensores de agarre y lluvia) · 29 oct 2026
 > Mapa: [mapa-ambiente-v0.1.svg](mapa-ambiente-v0.1.svg), generado desde el código con `rally mapa --svg`.
 > Ficha original del curso: [ficha-autonomous-rally.png](ficha-autonomous-rally.png)
 
@@ -10,7 +10,8 @@
 |---|---|---|
 | Pista rectangular | Pista de 239 m, 3 checkpoints | etiqueta `ambiente-v0.1` |
 | 0.1-monaco | Circuito de Mónaco, muros, notas del copiloto (16 observaciones). Modelo entrenado: `modelo-v1` | etiqueta `modelo-v1` |
-| **0.2** | Sensor de agarre (19 observaciones); correcciones de una revisión de código: estancarse cuesta −50, la puerta cruzada pisando el escape cuenta al volver, círculo de fricción con la velocidad nueva, contorno del carro cada 0.5 m | esta ficha |
+| 0.2 | Sensor de agarre (19 observaciones); correcciones de una revisión de código: estancarse cuesta −50, la puerta cruzada pisando el escape cuenta al volver, círculo de fricción con la velocidad nueva, contorno del carro cada 0.5 m. Modelo entrenado: `modelo-v2` | etiqueta `modelo-v2` |
+| **0.3** | Sensor de lluvia (20 observaciones) y entrenamiento con lluvia en la mitad de los episodios (μ entre 0.45 y 0.6) | esta ficha |
 
 ## Mision y mapa
 
@@ -104,10 +105,11 @@ automáticas lo verifican, junto con que dos tramos no vecinos nunca queden a me
 | uso de agarre | Aceleración de las llantas / (μ·g) | — | [0, 1] | Sí |
 | derrape | Si las llantas están en su límite en este paso | bool | {0, 1} | Sí |
 | μ estimado | Menor agarre medido en el episodio (empieza en 1.2 = sin medir) | — | [0, 1.2] | Sí |
+| lluvia | Si el asfalto está mojado (μ < 0.75) | bool | {0, 1} | Sí |
 
 ## Observaciones y acciones
 
-### Observación (vector de 19 valores normalizados)
+### Observación (vector de 20 valores normalizados)
 
 | # | Componente | Cálculo | Rango |
 |---|---|---|---|
@@ -121,6 +123,7 @@ automáticas lo verifican, junto con que dos tramos no vecinos nunca queden a me
 | 16 | **Uso de agarre** | aceleración de las llantas / (μ·g), recortado a 1 | [0, 1] |
 | 17 | **Derrape** | 1 si las llantas están en su límite en este paso | {0, 1} |
 | 18 | **Agarre estimado** | menor μ medido en el episodio / 1.2 | [0, 1] |
+| 19 | **Lluvia** | 1 si el asfalto está mojado (μ < 0.75), como el sensor de lluvia del parabrisas | {0, 1} |
 
 **Notas del copiloto:** en el rally real el copiloto le lee al piloto las curvas que vienen ("derecha
 cerrada en 50"). Sin ellas, con rayos de 20 m, el agente no puede saber a tiempo que viene la horquilla.
@@ -131,6 +134,13 @@ un control de tracción real. Cuando las llantas llegan a su límite (al frenar 
 simulador mide el agarre disponible y lo guarda como "agarre estimado". Por ejemplo, en mojado una
 frenada fuerte satura las llantas (8 m/s² > 0.5·g) y revela μ ≈ 0.5; en seco no se satura (8 < 0.9·g)
 y el estimado sigue en "sin medir". Así el agente puede aprender a "probar los frenos" en la recta.
+
+**Sensor de lluvia (v0.3):** la v2 mostró que el sensor de agarre llega tarde: cuando las llantas se
+saturan, el carro ya va demasiado rápido para Sainte Dévote. Un piloto real ve que llueve antes de
+arrancar, así que el agente recibe una señal de lluvia (sí/no) desde el primer paso. Sigue sin ver el
+valor exacto de μ: con lluvia el agarre puede estar entre 0.45 y 0.6 y tiene que manejar bien en todo
+ese rango. Además, la mitad de los episodios de entrenamiento son con lluvia (`prob_lluvia: 0.5` en
+`params.yaml`); en la v2 la lluvia era rara y el modelo casi no la practicaba.
 
 ### Acción (continua, 2 controles)
 

@@ -58,20 +58,20 @@
     },
     "ppo": {
       "seco": {
-        "vueltas_pct": 100.0,
-        "tiempo_mediano_s": 63.1,
-        "tiempo_p90_s": 67.8,
-        "incidentes_ep": 0.22,
-        "recompensa_media": 174.63,
-        "progreso_pct": 99.9
+        "vueltas_pct": 0.0,
+        "tiempo_mediano_s": null,
+        "tiempo_p90_s": null,
+        "incidentes_ep": 0.0,
+        "recompensa_media": -58.31,
+        "progreso_pct": 10.4
       },
       "mojado": {
         "vueltas_pct": 0.0,
         "tiempo_mediano_s": null,
         "tiempo_p90_s": null,
-        "incidentes_ep": 2.0,
-        "recompensa_media": -44.3,
-        "progreso_pct": 11.6
+        "incidentes_ep": 0.0,
+        "recompensa_media": -35.03,
+        "progreso_pct": 32.7
       }
     }
   },
@@ -97,10 +97,10 @@
     "ppo": {
       "criterios": {
         "mejora_en_mojado": false,
-        "no_pierde_vueltas_en_seco": true,
-        "tiempo_seco_maximo_5pct": true
+        "no_pierde_vueltas_en_seco": false,
+        "tiempo_seco_maximo_5pct": false
       },
-      "tiempo_seco_cambio_pct": -18.5,
+      "tiempo_seco_cambio_pct": null,
       "aceptado": false
     }
   }

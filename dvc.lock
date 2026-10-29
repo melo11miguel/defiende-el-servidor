@@ -5,12 +5,12 @@ stages:
     deps:
     - path: src/rally/env.py
       hash: md5
-      md5: 2fb9385323f5ee9d15909c2b302c6f84
-      size: 13272
+      md5: 7aa733d8c59879b1a00534fc46360ddf
+      size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 65019f4ad696a49f6d5e4629379d119f
-      size: 16987
+      md5: 209955bb486751ceff5e7a40d9bc059e
+      size: 17460
     - path: src/rally/policies.py
       hash: md5
       md5: e20ed0a5d749e09a9051fc8d82ad3c41
@@ -36,11 +36,11 @@ stages:
     outs:
     - path: data/processed/demos.npz
       hash: md5
-      md5: fd3e569d6688dd0d41668b88e7b3d392
-      size: 1106617
+      md5: 43946875055bdf02f1f46c621fd583b8
+      size: 1108428
     - path: data/processed/escenarios.json
       hash: md5
-      md5: 4e106a77c008fc288ec405e535ecc03a
+      md5: db09fa2d7df40971da0c3938024b87f1
       size: 1125
     - path: metrics/datos.json
       hash: md5
@@ -51,8 +51,8 @@ stages:
     deps:
     - path: data/processed/demos.npz
       hash: md5
-      md5: fd3e569d6688dd0d41668b88e7b3d392
-      size: 1106617
+      md5: 43946875055bdf02f1f46c621fd583b8
+      size: 1108428
     - path: src/rally/agentes/discreto.py
       hash: md5
       md5: da0ce249e664249f67397b173ce423f1
@@ -63,12 +63,12 @@ stages:
       size: 3321
     - path: src/rally/env.py
       hash: md5
-      md5: 2fb9385323f5ee9d15909c2b302c6f84
-      size: 13272
+      md5: 7aa733d8c59879b1a00534fc46360ddf
+      size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 65019f4ad696a49f6d5e4629379d119f
-      size: 16987
+      md5: 209955bb486751ceff5e7a40d9bc059e
+      size: 17460
     - path: src/rally/track.py
       hash: md5
       md5: 292b0621f3fc86bcbb1e90d5d1540fa4
@@ -90,7 +90,7 @@ stages:
     outs:
     - path: models/qlearning
       hash: md5
-      md5: 11578adc0b6d4933868df4561b3c10b5.dir
+      md5: 47b84b29dbe2e443f7b05f54546cb29f.dir
       size: 28238
       nfiles: 2
   ppo:
@@ -98,20 +98,20 @@ stages:
     deps:
     - path: data/processed/demos.npz
       hash: md5
-      md5: fd3e569d6688dd0d41668b88e7b3d392
-      size: 1106617
+      md5: 43946875055bdf02f1f46c621fd583b8
+      size: 1108428
     - path: src/rally/agentes/ppo.py
       hash: md5
-      md5: f8b3f79f773c2798c0a3ffd00b16555b
-      size: 6214
+      md5: 757d83e8f886c79f124aa76e99e205a0
+      size: 9439
     - path: src/rally/env.py
       hash: md5
-      md5: 2fb9385323f5ee9d15909c2b302c6f84
-      size: 13272
+      md5: 7aa733d8c59879b1a00534fc46360ddf
+      size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 65019f4ad696a49f6d5e4629379d119f
-      size: 16987
+      md5: 209955bb486751ceff5e7a40d9bc059e
+      size: 17460
     - path: src/rally/track.py
       hash: md5
       md5: 292b0621f3fc86bcbb1e90d5d1540fa4
@@ -139,31 +139,34 @@ stages:
           - 128
           bc_epocas: 40
           dominio_aleatorio: true
-          mu_min: 0.5
+          mu_min: 0.75
           mu_max: 1.0
+          prob_lluvia: 0.5
+          lluvia_min: 0.45
+          lluvia_max: 0.6
           eval_cada: 100000
           semilla: 0
     outs:
     - path: models/ppo
       hash: md5
-      md5: 434abb259a3cd5fa52e20fca901f97b3.dir
-      size: 493861
+      md5: 45d7e4a412e29eccb5083b2709de35c7.dir
+      size: 497052
       nfiles: 2
   evaluar:
     cmd: rally pipeline evaluar
     deps:
     - path: data/processed/escenarios.json
       hash: md5
-      md5: 4e106a77c008fc288ec405e535ecc03a
+      md5: db09fa2d7df40971da0c3938024b87f1
       size: 1125
     - path: models/ppo
       hash: md5
-      md5: 434abb259a3cd5fa52e20fca901f97b3.dir
-      size: 493861
+      md5: 45d7e4a412e29eccb5083b2709de35c7.dir
+      size: 497052
       nfiles: 2
     - path: models/qlearning
       hash: md5
-      md5: 11578adc0b6d4933868df4561b3c10b5.dir
+      md5: 47b84b29dbe2e443f7b05f54546cb29f.dir
       size: 28238
       nfiles: 2
     - path: src/rally/agentes/discreto.py
@@ -172,20 +175,20 @@ stages:
       size: 1503
     - path: src/rally/agentes/ppo.py
       hash: md5
-      md5: f8b3f79f773c2798c0a3ffd00b16555b
-      size: 6214
+      md5: 757d83e8f886c79f124aa76e99e205a0
+      size: 9439
     - path: src/rally/agentes/qlearning.py
       hash: md5
       md5: 8d4a44e577e6f4f3e381bfe72041b776
       size: 3321
     - path: src/rally/env.py
       hash: md5
-      md5: 2fb9385323f5ee9d15909c2b302c6f84
-      size: 13272
+      md5: 7aa733d8c59879b1a00534fc46360ddf
+      size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 65019f4ad696a49f6d5e4629379d119f
-      size: 16987
+      md5: 209955bb486751ceff5e7a40d9bc059e
+      size: 17460
     - path: src/rally/policies.py
       hash: md5
       md5: e20ed0a5d749e09a9051fc8d82ad3c41
@@ -216,23 +219,23 @@ stages:
     outs:
     - path: metrics/evaluacion.json
       hash: md5
-      md5: cbfc4032fdc3a5b9149c2305a1fd7cde
-      size: 2612
+      md5: fbda65b9d5331e8a234e9a1434cb971f
+      size: 2611
   registrar:
     cmd: rally pipeline registrar
     deps:
     - path: metrics/evaluacion.json
       hash: md5
-      md5: cbfc4032fdc3a5b9149c2305a1fd7cde
-      size: 2612
+      md5: fbda65b9d5331e8a234e9a1434cb971f
+      size: 2611
     - path: models/ppo
       hash: md5
-      md5: 434abb259a3cd5fa52e20fca901f97b3.dir
-      size: 493861
+      md5: 45d7e4a412e29eccb5083b2709de35c7.dir
+      size: 497052
       nfiles: 2
     - path: models/qlearning
       hash: md5
-      md5: 11578adc0b6d4933868df4561b3c10b5.dir
+      md5: 47b84b29dbe2e443f7b05f54546cb29f.dir
       size: 28238
       nfiles: 2
     - path: src/rally/agentes/seguimiento.py
@@ -241,8 +244,8 @@ stages:
       size: 1519
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 65019f4ad696a49f6d5e4629379d119f
-      size: 16987
+      md5: 209955bb486751ceff5e7a40d9bc059e
+      size: 17460
     params:
       params.yaml:
         evaluacion:
@@ -260,5 +263,5 @@ stages:
     outs:
     - path: metrics/registro.json
       hash: md5
-      md5: a1cdac5d3ad319e053b67a65b6e7c139
+      md5: 4e5bf4c3bc260e3cebf0c6588b5aaab4
       size: 298
