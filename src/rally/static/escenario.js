@@ -7,7 +7,6 @@
 
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
-import { Water } from "three/addons/objects/Water.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { pbr, cielo, registrar } from "./texturas.js";
@@ -225,15 +224,16 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   const envProc = pmrem.fromScene((() => { const s = new THREE.Scene(); s.add(sky.clone()); return s; })()).texture;
 
   // ---------------------------------------------------------------- mar y puerto
-  const agua = new Water(new THREE.PlaneGeometry(4000, 4000), {
-    textureWidth: 1024, textureHeight: 1024,
-    waterNormals: new THREE.TextureLoader().load(
-      // El paquete npm de three no incluye examples/textures (daba 404): se toma del repo en GitHub
-      "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r170/examples/textures/waternormals.jpg",
-      (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; }),
-    sunDirection: sol.clone(), sunColor: 0xffd7a0, waterColor: 0x0a3550, distortionScale: 2.2,
-    fog: true,
-  });
+  // Mar: superficie brillante con olas (mapa de relieve que se desplaza) que refleja el cielo
+  // HDR. Antes se usaba Water, que dibuja la escena entera otra vez en cada cuadro (muy lento).
+  const olas = new THREE.TextureLoader().load(
+    // El paquete npm de three no incluye examples/textures: se toma del repo en GitHub
+    "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r170/examples/textures/waternormals.jpg",
+    (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(220, 220); });
+  const agua = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshPhysicalMaterial({
+    color: 0x0a3550, roughness: 0.08, metalness: 0.0, normalMap: olas, normalScale: new THREE.Vector2(0.35, 0.35),
+    clearcoat: 1, clearcoatRoughness: 0.05,
+  }));
   agua.rotation.x = -Math.PI / 2;
   agua.position.set(0, -0.6, -ORILLA + 2000);  // z = -y: el mar ocupa todo y < ORILLA
   scene.add(agua);
@@ -377,7 +377,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     const h = alturaColina(x, y);
     if (h > 3) edificios.push([x, y, 8 + rnd() * 5, 8 + rnd() * 5, 1 + Math.floor(rnd() * 3), h - 1]);
   }
-  for (let i = 0; i < 1600; i++) {                  // bosque en las colinas
+  for (let i = 0; i < 1000; i++) {                  // bosque en las colinas
     const x = (rnd() * 2 - 1) * 1250, y = Y0 + 15 + rnd() * 700;
     const h = alturaColina(x, y);
     if (h > 2) pinos.push([x, y, h, 1.2 + rnd() * 1.4]);
@@ -402,9 +402,14 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   // Edificios: muros con fachada (u = ancho/vano, v = pisos), cornisa y azotea
   const PISO = 3.2;
   const lisoUV = [[0.04, 0.97], [0.05, 0.97], [0.05, 0.98], [0.04, 0.98]];   // zona de estuco sin ventanas
-  const mallas = [new Malla(), new Malla()], techosTeja = new Malla();
+  const BLOQUE = 120, bloques = new Map(), techosTeja = new Malla();
+  const mallaDe = (x, y, k) => {
+    const clave = `${Math.floor(x / BLOQUE)},${Math.floor(y / BLOQUE)},${k}`;
+    if (!bloques.has(clave)) bloques.set(clave, new Malla());
+    return bloques.get(clave);
+  };
   for (const [x, y, lx, ly, pisos, base] of edificios) {
-    const M = mallas[rnd() < 0.55 ? 0 : 1];
+    const M = mallaDe(x, y, rnd() < 0.55 ? 0 : 1);
     const h = pisos * PISO, col = color.setHex(paleta[Math.floor(rnd() * paleta.length)]).clone();
     const esq = [[x - lx / 2, y - ly / 2], [x + lx / 2, y - ly / 2], [x + lx / 2, y + ly / 2], [x - lx / 2, y + ly / 2]];
     for (let i = 0; i < 4; i++) {
@@ -435,8 +440,8 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     new THREE.MeshStandardMaterial({ map, vertexColors: true, roughness: 0.85 }));
   const matTeja = new THREE.MeshStandardMaterial({ color: 0xb4583a, roughness: 0.8 });
   pbr(matTeja, "clay_roof_tiles", { repetir: [1, 1] });
-  for (const [k, M] of mallas.entries()) {
-    const edif = new THREE.Mesh(M.geometria(), matFachadas[k]);
+  for (const [clave, M] of bloques) {
+    const edif = new THREE.Mesh(M.geometria(), matFachadas[+clave.split(",")[2]]);
     edif.castShadow = edif.receiveShadow = true;
     scene.add(edif);
   }
@@ -483,7 +488,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   const copaPino = (() => {
     const partes = [];
     for (const [dx, dy, dz, r] of [[0, 0, 0, 3.2], [1.8, -0.3, 0.8, 2.4], [-1.6, -0.2, -0.9, 2.5], [0.3, 0.4, -1.8, 2.2]]) {
-      const g = new THREE.IcosahedronGeometry(r, 3);
+      const g = new THREE.IcosahedronGeometry(r, 1);
       const p = g.attributes.position;
       for (let i = 0; i < p.count; i++) {
         const v = new THREE.Vector3().fromBufferAttribute(p, i);
@@ -545,7 +550,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   const matGrada = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
   pbr(matGrada, "grey_plaster", { repetir: [1, 1], rugosidad: false });
   const grada = new THREE.Mesh(gradas.geometria(), matGrada);
-  grada.receiveShadow = grada.castShadow = true;
+  grada.receiveShadow = true;
   scene.add(grada);
 
   // Persona: piernas, torso y brazos (abajo o arriba saludando) + cabeza aparte
@@ -559,10 +564,10 @@ export function construirEscenario({ scene, renderer, pista, P }) {
       g.deleteAttribute("uv");
       partes.push(g.toNonIndexed());
     };
-    const pierna = () => new THREE.CapsuleGeometry(0.075, 0.62, 3, 6);
+    const pierna = () => new THREE.CapsuleGeometry(0.075, 0.62, 2, 5);
     pieza(pierna(), 0, 0.4, 0.09, 0, 0x2b3445); pieza(pierna(), 0, 0.4, -0.09, 0, 0x2b3445);
-    pieza(new THREE.CapsuleGeometry(0.17, 0.45, 4, 8), 0, 1.08, 0);
-    const brazo = () => new THREE.CapsuleGeometry(0.055, 0.5, 3, 6);
+    pieza(new THREE.CapsuleGeometry(0.17, 0.45, 3, 7), 0, 1.08, 0);
+    const brazo = () => new THREE.CapsuleGeometry(0.055, 0.5, 2, 5);
     if (brazosArriba) { pieza(brazo(), 0, 1.6, 0.27, 0.35); pieza(brazo(), 0, 1.6, -0.27, -0.35); }
     else { pieza(brazo(), 0, 1.02, 0.24, 0.12); pieza(brazo(), 0, 1.02, -0.24, -0.12); }
     return mergeGeometries(partes);
@@ -570,10 +575,21 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   const ropa = [0xe11d48, 0x2563eb, 0xfacc15, 0xf8fafc, 0x16a34a, 0xf97316, 0x111827, 0x7c3aed, 0x0ea5e9, 0xdc2626];
   const piel = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
   const matPersona = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+  const tiempoGPU = { value: 0 };
+  // Salto de la gente que saluda, calculado en el shader con el número de cada instancia
+  const saltar = (mat) => {
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTiempo = tiempoGPU;
+      sh.vertexShader = "uniform float uTiempo;\n" + sh.vertexShader.replace("#include <begin_vertex>",
+        "#include <begin_vertex>\n  transformed.y += max(0.0, sin(uTiempo * 7.0 + float(gl_InstanceID) * 1.7)) * 0.12;");
+    };
+    return mat;
+  };
   const grupos = [false, true].map((arriba) => {
     const lista = personas.filter((p) => p[4] === arriba);
-    const im = new THREE.InstancedMesh(cuerpoPersona(arriba), matPersona, lista.length);
-    const cab = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ roughness: 0.7 }), lista.length);
+    const im = new THREE.InstancedMesh(cuerpoPersona(arriba), arriba ? saltar(matPersona.clone()) : matPersona, lista.length);
+    const cab = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 8, 6),
+      arriba ? saltar(new THREE.MeshStandardMaterial({ roughness: 0.7 })) : new THREE.MeshStandardMaterial({ roughness: 0.7 }), lista.length);
     lista.forEach(([x, y, z, rot], i) => {
       q.setFromAxisAngle(ARRIBA, rot);
       m.compose(P(x, y, z), q, e.set(1, 0.9 + rnd() * 0.2, 1)); im.setMatrixAt(i, m);
@@ -581,7 +597,6 @@ export function construirEscenario({ scene, renderer, pista, P }) {
       m.compose(P(x, y, z + 1.55), q, e.set(1, 1, 1)); cab.setMatrixAt(i, m);
       cab.setColorAt(i, color.setHex(piel[Math.floor(rnd() * piel.length)]));
     });
-    im.castShadow = true;
     scene.add(im, cab);
     return { im, cab, lista, fase: lista.map(() => rnd() * 6.3) };
   });
@@ -682,13 +697,11 @@ export function construirEscenario({ scene, renderer, pista, P }) {
       luzSol.intensity = mojado ? 0.7 : 2.6;
       luzSol.userData.direccion = sol.clone().normalize();
     }
-    agua.material.uniforms.sunDirection.value.copy(sol).normalize();
-    agua.material.uniforms.waterColor.value.set(mojado ? 0x1c2a36 : 0x0a3550);
+    agua.material.color.set(mojado ? 0x1c2a36 : 0x0a3550);
   }
 
-  const tmpM = new THREE.Matrix4(), tmpP = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Vector3();
   function actualizar(dt, t) {
-    agua.material.uniforms.time.value += dt * 0.6;
+    olas.offset.x += dt * 0.004; olas.offset.y += dt * 0.0025;
     for (const g of grupoBanderas.children) {
       const p = g.userData.tela.geometry.attributes.position;
       for (let i = 0; i < p.count; i++) {
@@ -697,16 +710,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
       }
       p.needsUpdate = true;
     }
-    // El público que saluda salta un poco
-    const { im, cab, lista, fase } = grupos[1];
-    for (let i = 0; i < lista.length; i++) {
-      const salto = Math.max(0, Math.sin(t * 7 + fase[i])) * 0.12;
-      im.getMatrixAt(i, tmpM); tmpM.decompose(tmpP, tmpQ, tmpE);
-      tmpP.y = lista[i][2] + salto; tmpM.compose(tmpP, tmpQ, tmpE); im.setMatrixAt(i, tmpM);
-      cab.getMatrixAt(i, tmpM); tmpM.decompose(tmpP, tmpQ, tmpE);
-      tmpP.y = lista[i][2] + 1.55 + salto; tmpM.compose(tmpP, tmpQ, tmpE); cab.setMatrixAt(i, tmpM);
-    }
-    im.instanceMatrix.needsUpdate = cab.instanceMatrix.needsUpdate = true;
+    tiempoGPU.value = t;   // el público que saluda salta (en el shader)
   }
 
   aplicarClima(false);

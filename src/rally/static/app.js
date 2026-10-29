@@ -37,7 +37,8 @@ let mu = parseFloat(params.get("mu") || "0.9");
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 // ?calidad=baja: para computadores sin tarjeta gráfica (sombras livianas, sin MSAA ni bloom)
 const CALIDAD_BAJA = params.get("calidad") === "baja";
-renderer.setPixelRatio(CALIDAD_BAJA ? 1 : Math.min(devicePixelRatio, 2));
+let resolucion = CALIDAD_BAJA ? 0.75 : Math.min(devicePixelRatio, 1.25);
+renderer.setPixelRatio(resolucion);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -83,7 +84,7 @@ const sol = new THREE.DirectionalLight(0xfff1dc, 2.4);
 sol.name = "sol";
 sol.position.set(-60, 90, 40);
 sol.castShadow = true;
-sol.shadow.mapSize.set(CALIDAD_BAJA ? 1024 : 4096, CALIDAD_BAJA ? 1024 : 4096);
+sol.shadow.mapSize.set(CALIDAD_BAJA ? 1024 : 2048, CALIDAD_BAJA ? 1024 : 2048);
 Object.assign(sol.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 10, far: 260 });
 sol.shadow.bias = -0.0004;
 sol.shadow.normalBias = 0.04;
@@ -871,6 +872,31 @@ function mostrarResultado() {
   $("resultado").classList.remove("oculto");
 }
 
+// ------------------------------------------------------------------ rendimiento
+// Mide los FPS y ajusta la resolución sola: si van lentos la baja, si sobran la sube.
+const fpsEl = document.createElement("div");
+fpsEl.id = "fps";
+document.body.appendChild(fpsEl);
+let fpsAcum = 0, fpsCuadros = 0, fpsVentana = 0;
+function medirFps(dt) {
+  fpsAcum += dt; fpsCuadros++;
+  if (fpsAcum < 1) return;
+  const fps = fpsCuadros / fpsAcum;
+  fpsAcum = 0; fpsCuadros = 0; fpsVentana++;
+  if (fpsVentana > 2) {                         // espera 3 s antes de ajustar (carga inicial)
+    const tope = Math.min(devicePixelRatio, 1.25), antes = resolucion;
+    if (fps < 40 && resolucion > 0.55) resolucion = Math.max(0.55, resolucion - 0.15);
+    else if (fps > 58 && resolucion < tope) resolucion = Math.min(tope, resolucion + 0.1);
+    if (resolucion !== antes) {
+      renderer.setPixelRatio(resolucion);
+      composer.setPixelRatio(resolucion);
+      composer.setSize(innerWidth, innerHeight);
+    }
+  }
+  fpsEl.textContent = `${fps.toFixed(0)} FPS · ${Math.round(resolucion * 100)}%`;
+  fpsEl.className = fps < 30 ? "lento" : "";
+}
+
 // ------------------------------------------------------------------ bucle
 const reloj = new THREE.Clock();
 let terminado = false;
@@ -975,6 +1001,7 @@ function animar() {
   actualizarCamara(est, dt);
   actualizarHUD(est);
   composer.render();
+  medirFps(dt);
 }
 
 // ------------------------------------------------------------------ entrenamiento en vivo
