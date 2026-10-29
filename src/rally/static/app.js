@@ -904,15 +904,18 @@ function mostrarResultado() {
 const fpsEl = document.createElement("div");
 fpsEl.id = "fps";
 document.body.appendChild(fpsEl);
-let fpsAcum = 0, fpsCuadros = 0, fpsVentana = 0;
-let malos = 0, buenos = 0, espera = 0, techoRes = 9;   // techoRes: nivel que ya se probó y fue lento
+let fpsT0 = performance.now(), fpsCuadros = 0, fpsVentana = 0;
+let malos = 0, buenos = 0, espera = 0, techoRes = 9, techoHasta = 0;   // techoRes: nivel que ya se probó y fue lento
 // Se llama ANTES de dibujar: cambiar el tamaño del lienzo lo borra, y si se hace después
 // de dibujar el navegador muestra ese cuadro vacío (el parpadeo negro).
-function medirFps(dt) {
-  fpsAcum += dt; fpsCuadros++;
-  if (fpsAcum < 1) return;
-  const fps = fpsCuadros / fpsAcum;
-  fpsAcum = 0; fpsCuadros = 0; fpsVentana++;
+// Usa el reloj real (el dt del bucle está topado en 0.1 s y no mostraría menos de 10 FPS).
+function medirFps() {
+  fpsCuadros++;
+  const ahora = performance.now(), seg = (ahora - fpsT0) / 1000;
+  if (seg < 1) return;
+  const fps = fpsCuadros / seg;
+  fpsT0 = ahora; fpsCuadros = 0; fpsVentana++;
+  if (ahora > techoHasta) techoRes = 9;          // el techo vence al minuto (un bache pasajero no lo deja para siempre)
   fpsEl.textContent = `${fps.toFixed(0)} FPS · ${Math.round(resolucion * 100)}% · ${Q.nombre}`;
   fpsEl.className = fps < 30 ? "lento" : "";
   if (fpsVentana <= 3 || document.hidden) return;   // carga inicial o pestaña oculta
@@ -924,7 +927,7 @@ function medirFps(dt) {
   if (espera > 0) { espera--; return; }
   const tope = Math.min(devicePixelRatio, Q.px, techoRes), antes = resolucion;
   if (malos >= 3 && resolucion > 0.7) {
-    techoRes = resolucion - 0.01;
+    techoRes = resolucion - 0.01; techoHasta = ahora + 60000;
     resolucion = Math.max(0.7, Math.round((resolucion - 0.1) * 10) / 10);
   } else if (buenos >= 5 && resolucion + 0.1 <= tope + 1e-6) {
     resolucion = Math.round((resolucion + 0.1) * 10) / 10;
@@ -1044,7 +1047,7 @@ function animar() {
   if (!SIN.has("hud") && (hudAcum >= 0.05 || !reproduciendo)) { hudAcum = 0; actualizarHUD(est); }
   cuadro++;
   if (Q.cadaSombra > 1 && cuadro % Q.cadaSombra === 0) renderer.shadowMap.needsUpdate = true;
-  medirFps(dt);   // antes de dibujar (ver medirFps)
+  medirFps();   // antes de dibujar (ver medirFps)
   if (SIN.has("post")) renderer.render(scene, cam); else composer.render();
 }
 
