@@ -234,7 +234,13 @@ def etapa_ppo(vivo=False):
     t0 = time.time()
     with _run("ppo", pp, {"algoritmo": "PPO"}) as run:
         mlflow.log_input(_dataset_mlflow(), context="demostraciones")
-        _, n_ep = ppo.entrenar(amb, pp, DEMOS, salida, grabador, _evaluador_rapido(amb, p["evaluacion"]))
+        # Punto de guardado: si el computador se apaga, el próximo `dvc repro` sigue donde quedó.
+        # La huella junta parámetros, versión del ambiente y dataset: si algo cambia, empieza de cero.
+        import hashlib
+        huella = hashlib.sha1(json.dumps([amb, pp, VERSION, _config_ambiente()[1]], sort_keys=True).encode()
+                              + DEMOS.read_bytes()).hexdigest()[:16]
+        punto = ppo.PuntoGuardado("runs/ppo-punto", huella)
+        _, n_ep = ppo.entrenar(amb, pp, DEMOS, salida, grabador, _evaluador_rapido(amb, p["evaluacion"]), punto)
         version = _registrar_modelo("ppo", salida / "modelo.zip", _ejemplo_obs())
         info = json.loads((salida / "info.json").read_text(encoding="utf-8"))
         info.update({"mlflow_run_id": run.info.run_id, "mlflow_modelo": seguimiento.MODELOS["ppo"],

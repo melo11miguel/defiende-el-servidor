@@ -86,15 +86,17 @@ def imitar(model, demos_path, epocas, lr=1e-3, batch=1024):
 class Seguimiento(BaseCallback):
     """Registra cada episodio en MLflow y transmite el episodio del env 0 al visor."""
 
-    def __init__(self, grabador, evaluador, eval_cada, n_envs):
+    def __init__(self, grabador, evaluador, eval_cada, n_envs, punto=None, pasos_iniciales=0, episodios_iniciales=0):
         super().__init__()
         self.grabador = grabador
         self.evaluador = evaluador
         self.eval_cada = eval_cada
         self.totales = np.zeros(n_envs)
         self.recientes = []
-        self.n_ep = 0
-        self.prox_eval = eval_cada
+        self.n_ep = episodios_iniciales
+        self.prox_eval = (pasos_iniciales // eval_cada + 1) * eval_cada
+        self.punto = punto
+        self.prox_punto = (pasos_iniciales // PUNTO_CADA + 1) * PUNTO_CADA
 
     def _on_step(self):
         infos, dones = self.locals["infos"], self.locals["dones"]
@@ -126,7 +128,45 @@ class Seguimiento(BaseCallback):
             self.prox_eval += self.eval_cada
             m = self.evaluador(self.model)
             mlflow.log_metrics({f"eval_{k}": v for k, v in m.items()}, step=self.num_timesteps)
+        if self.punto and self.num_timesteps >= self.prox_punto:
+            self.prox_punto += PUNTO_CADA
+            self.punto.guardar(self.model, self.n_ep)
         return True
+
+
+PUNTO_CADA = 200_000   # pasos entre puntos de guardado
+
+
+class PuntoGuardado:
+    """Guarda el entrenamiento a medias para seguir si el computador se apaga.
+
+    Vive en runs/ (fuera de DVC, que borra models/ppo al empezar la etapa). Solo se
+    reanuda si los parámetros y la versión del ambiente son los mismos (huella).
+    """
+
+    def __init__(self, carpeta, huella):
+        self.carpeta, self.huella = Path(carpeta), huella
+
+    def guardar(self, model, n_ep):
+        self.carpeta.mkdir(parents=True, exist_ok=True)
+        tmp = self.carpeta / "modelo.tmp.zip"
+        model.save(tmp)
+        tmp.replace(self.carpeta / "modelo.zip")    # escritura atómica
+        (self.carpeta / "estado.json").write_text(json.dumps(
+            {"huella": self.huella, "pasos": int(model.num_timesteps), "episodios": n_ep}), encoding="utf-8")
+
+    def cargar(self):
+        try:
+            est = json.loads((self.carpeta / "estado.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if est.get("huella") != self.huella or not (self.carpeta / "modelo.zip").exists():
+            return None
+        return est
+
+    def borrar(self):
+        for f in ("modelo.zip", "estado.json"):
+            (self.carpeta / f).unlink(missing_ok=True)
 
 
 class PilotoPPO:
@@ -140,19 +180,30 @@ class PilotoPPO:
         return np.clip(a, -1, 1)
 
 
-def entrenar(ambiente, p, demos_path, salida, grabador=None, evaluador=None):
+def entrenar(ambiente, p, demos_path, salida, grabador=None, evaluador=None, punto=None):
     n_envs = p["n_envs"]
     venv = SubprocVecEnv([crear_env(ambiente, p, i) for i in range(n_envs)])
-    model = PPO(
-        "MlpPolicy", venv, learning_rate=p["learning_rate"], n_steps=p["n_steps"],
-        batch_size=p["batch_size"], gamma=p["gamma"], gae_lambda=0.95, ent_coef=p["ent_coef"],
-        clip_range=0.2, policy_kwargs={"net_arch": dict(pi=p["capas"], vf=p["capas"]),
-                                       "log_std_init": -1.0},
-        seed=p["semilla"], device="cpu", verbose=0,
-    )
-    perdidas = imitar(model, demos_path, p["bc_epocas"]) if p["bc_epocas"] > 0 else []
-    cb = Seguimiento(grabador, evaluador, p["eval_cada"], n_envs)
-    model.learn(total_timesteps=p["pasos"], callback=cb, progress_bar=False)
+    previo = punto.cargar() if punto else None
+    if previo:
+        # Se reanuda donde quedó (el computador se apagó a mitad del entrenamiento)
+        model = PPO.load(punto.carpeta / "modelo.zip", env=venv, device="cpu")
+        perdidas = []
+        print(f"  Reanudando desde el paso {previo['pasos']:,} (punto de guardado)")
+        mlflow.set_tag("reanudado_desde_paso", previo["pasos"])
+    else:
+        model = PPO(
+            "MlpPolicy", venv, learning_rate=p["learning_rate"], n_steps=p["n_steps"],
+            batch_size=p["batch_size"], gamma=p["gamma"], gae_lambda=0.95, ent_coef=p["ent_coef"],
+            clip_range=0.2, policy_kwargs={"net_arch": dict(pi=p["capas"], vf=p["capas"]),
+                                           "log_std_init": -1.0},
+            seed=p["semilla"], device="cpu", verbose=0,
+        )
+        perdidas = imitar(model, demos_path, p["bc_epocas"]) if p["bc_epocas"] > 0 else []
+    hechos = previo["pasos"] if previo else 0
+    cb = Seguimiento(grabador, evaluador, p["eval_cada"], n_envs, punto, hechos,
+                     previo["episodios"] if previo else 0)
+    model.learn(total_timesteps=max(p["pasos"] - hechos, 0), callback=cb, progress_bar=False,
+                reset_num_timesteps=not previo)
     salida = Path(salida)
     salida.mkdir(parents=True, exist_ok=True)
     model.save(salida / "modelo.zip")
@@ -160,6 +211,9 @@ def entrenar(ambiente, p, demos_path, salida, grabador=None, evaluador=None):
         "algoritmo": "PPO", "pasos": p["pasos"], "episodios": cb.n_ep,
         "bc_perdida_final": perdidas[-1] if perdidas else None,
         "observacion": int(venv.observation_space.shape[0]),
+        "reanudado_desde_paso": hechos or None,
     }, indent=2), encoding="utf-8")
     venv.close()
+    if punto:
+        punto.borrar()   # terminó: el punto de guardado ya no hace falta
     return model, cb.n_ep

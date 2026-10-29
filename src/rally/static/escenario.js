@@ -186,6 +186,11 @@ function texturaFollaje() {   // pino: copa con manchas de luz y sombra
 // ------------------------------------------------------------------ escenario
 
 export function construirEscenario({ scene, renderer, pista, P }) {
+  // Diagnóstico de rendimiento: ?sin=publico,arboles,... oculta esas partes
+  const sin = new Set((new URLSearchParams(location.search).get("sin") || "").split(","));
+  function agregar(grupo, ...objetos) {
+    for (const o of objetos) { o.userData.grupo = grupo; o.visible = !sin.has(grupo); scene.add(o); }
+  }
   const [MX, MY] = pista.mapa;
   const dist = crearDistancia(pista.centro);
   // ¿El punto está dentro del circuito? (prueba del rayo sobre el polígono de la línea central)
@@ -207,7 +212,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   // Mientras llega el HDR se usa el cielo procedural; después, la foto real.
   const sky = new Sky();
   sky.scale.setScalar(2500);
-  scene.add(sky);
+  agregar("cielo", sky);
   const u = sky.material.uniforms;
   u.turbidity.value = 6; u.rayleigh.value = 1.6; u.mieCoefficient.value = 0.006; u.mieDirectionalG.value = 0.86;
   const sol = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(84), THREE.MathUtils.degToRad(15));
@@ -236,7 +241,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   }));
   agua.rotation.x = -Math.PI / 2;
   agua.position.set(0, -0.6, -ORILLA + 2000);  // z = -y: el mar ocupa todo y < ORILLA
-  scene.add(agua);
+  agregar("mar", agua);
 
   // Malecón y muelles de piedra (Port Hercule)
   const matPiedra = new THREE.MeshStandardMaterial({ color: 0xd8cdb8, roughness: 0.9 });
@@ -244,7 +249,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   const malecon = new THREE.Mesh(new THREE.BoxGeometry(3000, 1.4, 6), matPiedra);
   malecon.position.copy(P(0, ORILLA - 3, 0.1));
   malecon.receiveShadow = true;
-  scene.add(malecon);
+  agregar("mar", malecon);
   const muelles = [];
   for (const x of [-140, -60, 30, 110]) {
     const largo = 90 + rnd() * 40;
@@ -252,7 +257,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     pbr(muelle.material, "cobblestone_01", { repetir: [2, largo / 4] });
     muelle.position.copy(P(x, ORILLA - 6 - largo / 2, 0.05));
     muelle.receiveShadow = true;
-    scene.add(muelle);
+    agregar("mar", muelle);
     muelles.push([x, largo]);
   }
 
@@ -302,12 +307,12 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     iYate.setMatrixAt(i, m);
   });
   iYate.castShadow = iYate.receiveShadow = true;
-  scene.add(iYate);
+  agregar("mar", iYate);
   // Mástiles de algunos veleros
   const mastiles = lugaresYate.filter(() => rnd() < 0.3);
   const iMastil = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.08, 14, 5), new THREE.MeshStandardMaterial({ color: 0xe5e7eb, metalness: 0.6, roughness: 0.3 }), mastiles.length);
   mastiles.forEach(([x, y, , esc], i) => { m.compose(P(x, y, 8 * esc), q.identity(), e.set(esc, esc, esc)); iMastil.setMatrixAt(i, m); });
-  scene.add(iMastil);
+  agregar("mar", iMastil);
 
   // ---------------------------------------------------------------- suelo de la ciudad (adoquín)
   const matSuelo = new THREE.MeshStandardMaterial({ color: 0xa79d90, roughness: 0.95 });
@@ -316,7 +321,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   suelo.rotation.x = -Math.PI / 2;
   suelo.position.set(0, -0.05, -(ORILLA + 750));
   suelo.receiveShadow = true;
-  scene.add(suelo);
+  agregar("suelo", suelo);
 
   // ---------------------------------------------------------------- colinas (relieve con bosque)
   const Y0 = MY + 110;                              // donde empiezan a subir
@@ -344,7 +349,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     g.computeVertexNormals();
     const colinas = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
     colinas.receiveShadow = true;
-    scene.add(colinas);
+    agregar("colinas", colinas);
   }
 
   // ---------------------------------------------------------------- ciudad
@@ -397,7 +402,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   cesped.rotation.x = -Math.PI / 2;
   cesped.position.y = -0.02;
   cesped.receiveShadow = true;
-  scene.add(cesped);
+  agregar("ciudad", cesped);
 
   // Edificios: muros con fachada (u = ancho/vano, v = pisos), cornisa y azotea
   const PISO = 3.2;
@@ -443,11 +448,11 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   for (const [clave, M] of bloques) {
     const edif = new THREE.Mesh(M.geometria(), matFachadas[+clave.split(",")[2]]);
     edif.castShadow = edif.receiveShadow = true;
-    scene.add(edif);
+    agregar("ciudad", edif);
   }
   const teja = new THREE.Mesh(techosTeja.geometria(), matTeja);
   teja.castShadow = teja.receiveShadow = true;
-  scene.add(teja);
+  agregar("ciudad", teja);
 
   // ---------------------------------------------------------------- árboles
   // Palmera: tronco curvo con anillos + corona de hojas curvadas
@@ -482,7 +487,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     m.compose(punta, q, e.set(esc, esc, esc)); iCorona.setMatrixAt(i, m);
   });
   iTroncoP.castShadow = iCorona.castShadow = true;
-  scene.add(iTroncoP, iCorona);
+  agregar("arboles", iTroncoP, iCorona);
 
   // Pino piñonero: tronco + copa ancha y aplanada (tres masas irregulares)
   const copaPino = (() => {
@@ -513,7 +518,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     iCopa.setColorAt(i, color.setHSL(0.24 + rnd() * 0.06, 0.25 + rnd() * 0.15, 0.62 + rnd() * 0.25));
   });
   iTroncoN.castShadow = iCopa.castShadow = true;
-  scene.add(iTroncoN, iCopa);
+  agregar("arboles", iTroncoN, iCopa);
 
   // ---------------------------------------------------------------- público en graderías
   const personas = [], banderas = [], gradas = new Malla();
@@ -551,7 +556,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
   pbr(matGrada, "grey_plaster", { repetir: [1, 1], rugosidad: false });
   const grada = new THREE.Mesh(gradas.geometria(), matGrada);
   grada.receiveShadow = true;
-  scene.add(grada);
+  agregar("publico", grada);
 
   // Persona: piernas, torso y brazos (abajo o arriba saludando) + cabeza aparte
   const cuerpoPersona = (brazosArriba) => {
@@ -597,7 +602,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
       m.compose(P(x, y, z + 1.55), q, e.set(1, 1, 1)); cab.setMatrixAt(i, m);
       cab.setColorAt(i, color.setHex(piel[Math.floor(rnd() * piel.length)]));
     });
-    scene.add(im, cab);
+    agregar("publico", im, cab);
     return { im, cab, lista, fase: lista.map(() => rnd() * 6.3) };
   });
 
@@ -619,7 +624,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     g.userData.fase = rnd() * 6;
     grupoBanderas.add(g);
   });
-  scene.add(grupoBanderas);
+  agregar("publico", grupoBanderas);
 
   // ---------------------------------------------------------------- túnel
   const tunel = pista.curvas.find((c) => c.nombre === "Túnel");
@@ -637,7 +642,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
         new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false })));
     }
     grupoT.children.forEach((c) => { c.castShadow = true; c.receiveShadow = true; });
-    scene.add(grupoT);
+    agregar("tunel", grupoT);
   }
 
   // ---------------------------------------------------------------- faroles (modelo 3D de Poly Haven)
@@ -671,7 +676,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
           im.setMatrixAt(i, m);
         });
         im.castShadow = true;
-        scene.add(im);
+        agregar("faroles", im);
       });
     })).catch((err) => console.warn("Faroles no disponibles", err));
 
