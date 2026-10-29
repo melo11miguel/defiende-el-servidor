@@ -542,11 +542,12 @@ export function construirEscenario({ scene, renderer, pista, P }) {
         gradas.quad(pt(x, y, h, o0, alto), pt(x2, y2, h2, o0, alto), pt(x2, y2, h2, o1, alto), pt(x, y, h, o1, alto), [[0, 0], [1, 0], [1, 1], [0, 1]], gris, ARRIBA);
         const frente = new THREE.Vector3(Math.sin(h) * lado, 0, Math.cos(h) * lado);   // hacia la pista
         gradas.quad(pt(x, y, h, o0, alto - 0.35), pt(x2, y2, h2, o0, alto - 0.35), pt(x2, y2, h2, o0, alto), pt(x, y, h, o0, alto), [[0, 0], [1, 0], [1, 1], [0, 1]], gris.clone().multiplyScalar(0.85), frente);
-        for (let n = 0; n < 2; n++) {
-          if (rnd() < 0.18) continue;
-          const t = rnd(), off = lado * (muro + 1.35 + fila * 0.9);
+        if (rnd() > 0.82) continue;                  // una persona por metro y fila (antes dos)
+        {
+          const t = 0.2 + rnd() * 0.6, off = lado * (muro + 1.35 + fila * 0.9);
           const px = x + (x2 - x) * t - Math.sin(h) * off, py = y + (y2 - y) * t + Math.cos(h) * off;
-          personas.push([px, py, alto, h + (lado > 0 ? Math.PI / 2 : -Math.PI / 2), rnd() < 0.3]);
+          const tramo = tramos.findIndex(([a, b]) => s >= a && s <= b);
+          personas.push([px, py, alto, h + (lado > 0 ? Math.PI / 2 : -Math.PI / 2), rnd() < 0.3, tramo]);
           if (fila === 2 && rnd() < 0.05) banderas.push([px, py, h, alto]);
         }
       }
@@ -567,7 +568,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
       for (let i = 0; i < g.attributes.position.count; i++) arr.push(c.r, c.g, c.b);
       g.setAttribute("color", new THREE.Float32BufferAttribute(arr, 3));
       g.deleteAttribute("uv");
-      partes.push(g.toNonIndexed());
+      partes.push(g);   // indexada: cada vértice una sola vez
     };
     const pierna = () => new THREE.CapsuleGeometry(0.075, 0.62, 2, 5);
     pieza(pierna(), 0, 0.4, 0.09, 0, 0x2b3445); pieza(pierna(), 0, 0.4, -0.09, 0, 0x2b3445);
@@ -590,11 +591,18 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     };
     return mat;
   };
-  const grupos = [false, true].map((arriba) => {
-    const lista = personas.filter((p) => p[4] === arriba);
-    const im = new THREE.InstancedMesh(cuerpoPersona(arriba), arriba ? saltar(matPersona.clone()) : matPersona, lista.length);
-    const cab = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 8, 6),
-      arriba ? saltar(new THREE.MeshStandardMaterial({ roughness: 0.7 })) : new THREE.MeshStandardMaterial({ roughness: 0.7 }), lista.length);
+  // Un grupo por tramo de pista y por postura: la tarjeta gráfica solo dibuja las graderías en cámara
+  const cuerpos = [cuerpoPersona(false), cuerpoPersona(true)];
+  const geoCabeza = new THREE.SphereGeometry(0.12, 8, 6);
+  const matSaltar = saltar(matPersona.clone()), matCabeza = new THREE.MeshStandardMaterial({ roughness: 0.7 });
+  const matCabezaSaltar = saltar(new THREE.MeshStandardMaterial({ roughness: 0.7 }));
+  const combinaciones = [];
+  for (let tr = 0; tr < tramos.length; tr++) for (const arriba of [false, true]) combinaciones.push([tr, arriba]);
+  const grupos = combinaciones.map(([tr, arriba]) => {
+    const lista = personas.filter((p) => p[4] === arriba && p[5] === tr);
+    if (!lista.length) return null;
+    const im = new THREE.InstancedMesh(cuerpos[+arriba], arriba ? matSaltar : matPersona, lista.length);
+    const cab = new THREE.InstancedMesh(geoCabeza, arriba ? matCabezaSaltar : matCabeza, lista.length);
     lista.forEach(([x, y, z, rot], i) => {
       q.setFromAxisAngle(ARRIBA, rot);
       m.compose(P(x, y, z), q, e.set(1, 0.9 + rnd() * 0.2, 1)); im.setMatrixAt(i, m);
@@ -602,9 +610,11 @@ export function construirEscenario({ scene, renderer, pista, P }) {
       m.compose(P(x, y, z + 1.55), q, e.set(1, 1, 1)); cab.setMatrixAt(i, m);
       cab.setColorAt(i, color.setHex(piel[Math.floor(rnd() * piel.length)]));
     });
+    im.computeBoundingSphere(); cab.computeBoundingSphere();   // para descartar lo que no se ve
     agregar("publico", im, cab);
-    return { im, cab, lista, fase: lista.map(() => rnd() * 6.3) };
+    return { im, cab };
   });
+  void grupos;
 
   const flagsMat = [texturaBandera(["#e11d48", "#f8fafc"]), texturaBandera(["#f8fafc", "#2563eb", "#e11d48"]),
     texturaBandera(["#16a34a", "#f8fafc", "#e11d48"]), texturaBandera(["#111827", "#facc15", "#e11d48"])]

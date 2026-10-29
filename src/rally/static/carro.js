@@ -176,7 +176,7 @@ function pintarCarroceria(mesh, raiz) {
   geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
 }
 
-async function cargarModelo({ largo: L, ancho: W, ejes }, luzFreno, faro) {
+async function cargarModelo({ largo: L, ancho: W, ejes }, luzFreno, faro, calidad) {
   const [{ GLTFLoader }, { DRACOLoader }, { DecalGeometry }] = await Promise.all([
     import("three/addons/loaders/GLTFLoader.js"),
     import("three/addons/loaders/DRACOLoader.js"),
@@ -198,19 +198,23 @@ async function cargarModelo({ largo: L, ancho: W, ejes }, luzFreno, faro) {
   raiz.updateMatrixWorld(true);
 
   // Materiales
-  const pintura = new THREE.MeshPhysicalMaterial({
-    vertexColors: true, metalness: 0.75, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.04,
-    iridescence: 0.25, iridescenceIOR: 1.6,
-  });
+  // Pintura: en calidad alta, laca (clearcoat); en media/baja, metálico estándar (mucho más
+  // barato en gráficos integrados y casi igual gracias al reflejo del cielo HDR).
+  const pintura = calidad === "alta"
+    ? new THREE.MeshPhysicalMaterial({ vertexColors: true, metalness: 0.75, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.04 })
+    : new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.8, roughness: 0.22 });
   const dorado = new THREE.MeshStandardMaterial({ color: 0xc9a227, metalness: 1, roughness: 0.22 });
-  const vidrio = new THREE.MeshPhysicalMaterial({ color: 0x0a0f1a, metalness: 0.25, roughness: 0.02,
-    transmission: 0.35, transparent: true, opacity: 0.85, clearcoat: 1 });
+  // Vidrio oscuro semitransparente. Sin "transmission": eso obliga a dibujar toda la
+  // escena una segunda vez en cada cuadro solo para el vidrio (era lo que más pesaba).
+  const vidrio = new THREE.MeshStandardMaterial({ color: 0x0a0f1a, metalness: 0.6, roughness: 0.05,
+    transparent: true, opacity: 0.82 });
   const faros = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff3c4, emissiveIntensity: 2.5 });
   modelo.traverse((o) => {
     if (!o.isMesh) return;
-    o.castShadow = true;
-    o.receiveShadow = true;
     const n = o.name;
+    // Solo la carrocería y las llantas proyectan sombra (el interior, frenos y cromo no se notan)
+    o.castShadow = n === "body" || n === "tire";
+    o.receiveShadow = n === "body";
     if (n === "body") { pintarCarroceria(o, raiz); o.material = pintura; }
     else if (n.startsWith("rim_")) o.material = dorado;
     else if (n === "glass") o.material = vidrio;
@@ -241,9 +245,9 @@ async function cargarModelo({ largo: L, ancho: W, ejes }, luzFreno, faro) {
     const orient = new THREE.Euler().setFromRotationMatrix(
       new THREE.Matrix4().lookAt(hit.point, hit.point.clone().add(ray.ray.direction.clone().negate()), new THREE.Vector3(0, 1, 0)));
     const geo = new DecalGeometry(cuerpo, hit.point, orient, new THREE.Vector3(2.05, 1.0, 0.8));
-    const decal = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({
+    const decal = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
       map: mapa, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4,
-      metalness: 0.2, roughness: 0.25, clearcoat: 1 }));
+      metalness: 0.2, roughness: 0.25 }));
     raiz.attach(decal);
   }
 
@@ -271,13 +275,13 @@ async function cargarModelo({ largo: L, ancho: W, ejes }, luzFreno, faro) {
 
 // Devuelve el carro básico de inmediato y lo cambia por el realista cuando termina
 // de cargar. `alCargar(ruedas)` avisa al visor que ahora hay otras ruedas que animar.
-export function crearCarro(medidas, { alCargar } = {}) {
+export function crearCarro(medidas, { alCargar, calidad = "media" } = {}) {
   const basico = crearCarroBasico(medidas);
   const grupo = new THREE.Group();
   grupo.add(basico.grupo);
   basico.grupo.remove(basico.faro, basico.faro.target);
   grupo.add(basico.faro, basico.faro.target);
-  registrar("carro 3D", cargarModelo(medidas, basico.luzFreno, basico.faro))
+  registrar("carro 3D", cargarModelo(medidas, basico.luzFreno, basico.faro, calidad))
     .then(({ raiz, ruedas }) => {
       grupo.remove(basico.grupo);
       grupo.add(raiz);

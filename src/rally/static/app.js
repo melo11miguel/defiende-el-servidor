@@ -20,6 +20,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const lerpAng = (a, b, t) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const params = new URLSearchParams(location.search);
+const SIN = new Set((params.get("sin") || "").split(","));   // diagnóstico de rendimiento
 
 // Si algo falla, se muestra en la pantalla de carga en vez de quedarse girando
 function mostrarError(msg) {
@@ -96,7 +97,7 @@ composer.addPass(new ShaderPass({
 const fxaa = new ShaderPass(FXAAShader);
 const ajustarFxaa = () => fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * resolucion), 1 / (innerHeight * resolucion));
 if (Q.fxaa) { composer.addPass(fxaa); ajustarFxaa(); }
-let cuadro = 0;
+let cuadro = 0, hudAcum = 0;
 const controles = new OrbitControls(cam, renderer.domElement);
 controles.enableDamping = true;
 controles.maxPolarAngle = Math.PI * 0.48;
@@ -407,12 +408,13 @@ let luzFreno, faro;
 let humo = null;
 function construirCarro() {
   // Cuando carga el modelo realista, sus ruedas reemplazan a las del carro básico
-  const c = crearCarro(pista.carro, { alCargar: (nuevas) => { ruedas.length = 0; ruedas.push(...nuevas); } });
+  const c = crearCarro(pista.carro, { calidad: CALIDAD, alCargar: (nuevas) => { ruedas.length = 0; ruedas.push(...nuevas); } });
   carro.add(c.grupo);
   ruedas.push(...c.ruedas);
   luzFreno = c.luzFreno;
   faro = c.faro;
   scene.add(carro);
+  carro.visible = !SIN.has("carro");
   humo = crearHumo(scene);
 }
 
@@ -910,8 +912,8 @@ function medirFps(dt) {
   fpsAcum = 0; fpsCuadros = 0; fpsVentana++;
   if (fpsVentana > 2) {                         // espera 3 s antes de ajustar (carga inicial)
     const tope = Math.min(devicePixelRatio, Q.px), antes = resolucion;
-    if (fps < 40 && resolucion > 0.7) resolucion = Math.max(0.7, resolucion - 0.1);
-    else if (fps > 58 && resolucion < tope) resolucion = Math.min(tope, resolucion + 0.1);
+    if (fps < 32 && resolucion > 0.7) resolucion = Math.max(0.7, resolucion - 0.1);
+    else if (fps > 50 && resolucion < tope) resolucion = Math.min(tope, resolucion + 0.1);
     if (resolucion !== antes) {
       renderer.setPixelRatio(resolucion);
       composer.setPixelRatio(resolucion);
@@ -1025,10 +1027,11 @@ function animar() {
     }
   }
   actualizarCamara(est, dt);
-  actualizarHUD(est);
+  hudAcum += dt;
+  if (!SIN.has("hud") && (hudAcum >= 0.05 || !reproduciendo)) { hudAcum = 0; actualizarHUD(est); }
   cuadro++;
   if (Q.cadaSombra > 1 && cuadro % Q.cadaSombra === 0) renderer.shadowMap.needsUpdate = true;
-  composer.render();
+  if (SIN.has("post")) renderer.render(scene, cam); else composer.render();
   medirFps(dt);
 }
 
