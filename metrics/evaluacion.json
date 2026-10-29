@@ -38,6 +38,24 @@
         "progreso_pct": 100.0
       }
     },
+    "maestro": {
+      "seco": {
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 80.8,
+        "tiempo_p90_s": 80.8,
+        "incidentes_ep": 0.0,
+        "recompensa_media": 167.73,
+        "progreso_pct": 100.0
+      },
+      "mojado": {
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 101.2,
+        "tiempo_p90_s": 101.2,
+        "incidentes_ep": 0.0,
+        "recompensa_media": 156.44,
+        "progreso_pct": 100.0
+      }
+    },
     "qlearning": {
       "seco": {
         "vueltas_pct": 0.0,
@@ -58,20 +76,20 @@
     },
     "ppo": {
       "seco": {
-        "vueltas_pct": 0.0,
-        "tiempo_mediano_s": null,
-        "tiempo_p90_s": null,
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 75.6,
+        "tiempo_p90_s": 75.6,
         "incidentes_ep": 0.0,
-        "recompensa_media": -58.31,
-        "progreso_pct": 10.4
+        "recompensa_media": 166.46,
+        "progreso_pct": 100.0
       },
       "mojado": {
-        "vueltas_pct": 0.0,
-        "tiempo_mediano_s": null,
-        "tiempo_p90_s": null,
+        "vueltas_pct": 100.0,
+        "tiempo_mediano_s": 91.8,
+        "tiempo_p90_s": 91.91,
         "incidentes_ep": 0.0,
-        "recompensa_media": -35.03,
-        "progreso_pct": 32.7
+        "recompensa_media": 157.54,
+        "progreso_pct": 100.0
       }
     }
   },
@@ -85,6 +103,15 @@
       "tiempo_seco_cambio_pct": 24.9,
       "aceptado": false
     },
+    "maestro": {
+      "criterios": {
+        "mejora_en_mojado": true,
+        "no_pierde_vueltas_en_seco": true,
+        "tiempo_seco_maximo_5pct": true
+      },
+      "tiempo_seco_cambio_pct": 4.4,
+      "aceptado": true
+    },
     "qlearning": {
       "criterios": {
         "mejora_en_mojado": false,
@@ -96,12 +123,12 @@
     },
     "ppo": {
       "criterios": {
-        "mejora_en_mojado": false,
-        "no_pierde_vueltas_en_seco": false,
-        "tiempo_seco_maximo_5pct": false
+        "mejora_en_mojado": true,
+        "no_pierde_vueltas_en_seco": true,
+        "tiempo_seco_maximo_5pct": true
       },
-      "tiempo_seco_cambio_pct": null,
-      "aceptado": false
+      "tiempo_seco_cambio_pct": -2.3,
+      "aceptado": true
     }
   }
 }

@@ -9,12 +9,12 @@ stages:
       size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 209955bb486751ceff5e7a40d9bc059e
-      size: 17460
+      md5: aa514c27cd3c106c7d2499eff8fd453d
+      size: 17661
     - path: src/rally/policies.py
       hash: md5
-      md5: e20ed0a5d749e09a9051fc8d82ad3c41
-      size: 3697
+      md5: 03cf55dcd1567b84059f3dd33506e718
+      size: 4324
     - path: src/rally/track.py
       hash: md5
       md5: 292b0621f3fc86bcbb1e90d5d1540fa4
@@ -67,8 +67,8 @@ stages:
       size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 209955bb486751ceff5e7a40d9bc059e
-      size: 17460
+      md5: aa514c27cd3c106c7d2499eff8fd453d
+      size: 17661
     - path: src/rally/track.py
       hash: md5
       md5: 292b0621f3fc86bcbb1e90d5d1540fa4
@@ -90,7 +90,7 @@ stages:
     outs:
     - path: models/qlearning
       hash: md5
-      md5: 47b84b29dbe2e443f7b05f54546cb29f.dir
+      md5: ac49a672e1efc52b74b7d9eb4ad198ff.dir
       size: 28238
       nfiles: 2
   ppo:
@@ -102,16 +102,20 @@ stages:
       size: 1108428
     - path: src/rally/agentes/ppo.py
       hash: md5
-      md5: 757d83e8f886c79f124aa76e99e205a0
-      size: 9439
+      md5: 1b7fe38fe068273fc59763495b4d8a68
+      size: 14770
     - path: src/rally/env.py
       hash: md5
       md5: 7aa733d8c59879b1a00534fc46360ddf
       size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 209955bb486751ceff5e7a40d9bc059e
-      size: 17460
+      md5: aa514c27cd3c106c7d2499eff8fd453d
+      size: 17661
+    - path: src/rally/policies.py
+      hash: md5
+      md5: 03cf55dcd1567b84059f3dd33506e718
+      size: 4324
     - path: src/rally/track.py
       hash: md5
       md5: 292b0621f3fc86bcbb1e90d5d1540fa4
@@ -127,9 +131,9 @@ stages:
         evaluacion.mu_seco: 0.9
         evaluacion.semilla_eval_rapida: 10000
         ppo:
-          pasos: 3000000
+          pasos: 2000000
           n_envs: 12
-          learning_rate: 0.0003
+          learning_rate: 0.0001
           n_steps: 1024
           batch_size: 2048
           gamma: 0.995
@@ -137,7 +141,13 @@ stages:
           capas:
           - 128
           - 128
+          log_std_init: -1.6
           bc_epocas: 40
+          dagger_iter: 10
+          dagger_episodios: 12
+          dagger_epocas: 15
+          maestro_mu_seco: 0.8
+          maestro_mu_lluvia: 0.45
           dominio_aleatorio: true
           mu_min: 0.75
           mu_max: 1.0
@@ -149,8 +159,8 @@ stages:
     outs:
     - path: models/ppo
       hash: md5
-      md5: 45d7e4a412e29eccb5083b2709de35c7.dir
-      size: 497052
+      md5: 661d2214a9d8d63bd0a8bdcb0622516f.dir
+      size: 497318
       nfiles: 2
   evaluar:
     cmd: rally pipeline evaluar
@@ -161,12 +171,12 @@ stages:
       size: 1125
     - path: models/ppo
       hash: md5
-      md5: 45d7e4a412e29eccb5083b2709de35c7.dir
-      size: 497052
+      md5: 661d2214a9d8d63bd0a8bdcb0622516f.dir
+      size: 497318
       nfiles: 2
     - path: models/qlearning
       hash: md5
-      md5: 47b84b29dbe2e443f7b05f54546cb29f.dir
+      md5: ac49a672e1efc52b74b7d9eb4ad198ff.dir
       size: 28238
       nfiles: 2
     - path: src/rally/agentes/discreto.py
@@ -175,8 +185,8 @@ stages:
       size: 1503
     - path: src/rally/agentes/ppo.py
       hash: md5
-      md5: 757d83e8f886c79f124aa76e99e205a0
-      size: 9439
+      md5: 1b7fe38fe068273fc59763495b4d8a68
+      size: 14770
     - path: src/rally/agentes/qlearning.py
       hash: md5
       md5: 8d4a44e577e6f4f3e381bfe72041b776
@@ -187,12 +197,12 @@ stages:
       size: 13564
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 209955bb486751ceff5e7a40d9bc059e
-      size: 17460
+      md5: aa514c27cd3c106c7d2499eff8fd453d
+      size: 17661
     - path: src/rally/policies.py
       hash: md5
-      md5: e20ed0a5d749e09a9051fc8d82ad3c41
-      size: 3697
+      md5: 03cf55dcd1567b84059f3dd33506e718
+      size: 4324
     - path: src/rally/track.py
       hash: md5
       md5: 292b0621f3fc86bcbb1e90d5d1540fa4
@@ -214,28 +224,29 @@ stages:
           pilotos:
           - experto
           - prudente
+          - maestro
           - qlearning
           - ppo
     outs:
     - path: metrics/evaluacion.json
       hash: md5
-      md5: fbda65b9d5331e8a234e9a1434cb971f
-      size: 2611
+      md5: b13ed5192535b5054af436b9be88b857
+      size: 3302
   registrar:
     cmd: rally pipeline registrar
     deps:
     - path: metrics/evaluacion.json
       hash: md5
-      md5: fbda65b9d5331e8a234e9a1434cb971f
-      size: 2611
+      md5: b13ed5192535b5054af436b9be88b857
+      size: 3302
     - path: models/ppo
       hash: md5
-      md5: 45d7e4a412e29eccb5083b2709de35c7.dir
-      size: 497052
+      md5: 661d2214a9d8d63bd0a8bdcb0622516f.dir
+      size: 497318
       nfiles: 2
     - path: models/qlearning
       hash: md5
-      md5: 47b84b29dbe2e443f7b05f54546cb29f.dir
+      md5: ac49a672e1efc52b74b7d9eb4ad198ff.dir
       size: 28238
       nfiles: 2
     - path: src/rally/agentes/seguimiento.py
@@ -244,8 +255,8 @@ stages:
       size: 1519
     - path: src/rally/pipeline.py
       hash: md5
-      md5: 209955bb486751ceff5e7a40d9bc059e
-      size: 17460
+      md5: aa514c27cd3c106c7d2499eff8fd453d
+      size: 17661
     params:
       params.yaml:
         evaluacion:
@@ -258,10 +269,118 @@ stages:
           pilotos:
           - experto
           - prudente
+          - maestro
           - qlearning
           - ppo
     outs:
     - path: metrics/registro.json
       hash: md5
-      md5: 4e5bf4c3bc260e3cebf0c6588b5aaab4
-      size: 298
+      md5: 4277d9de10d134b75a49d7d04d476c6f
+      size: 297
+  generalizacion:
+    cmd: rally pipeline generalizacion
+    deps:
+    - path: models/ppo
+      hash: md5
+      md5: 661d2214a9d8d63bd0a8bdcb0622516f.dir
+      size: 497318
+      nfiles: 2
+    - path: models/qlearning
+      hash: md5
+      md5: ac49a672e1efc52b74b7d9eb4ad198ff.dir
+      size: 28238
+      nfiles: 2
+    - path: src/rally/agentes/discreto.py
+      hash: md5
+      md5: da0ce249e664249f67397b173ce423f1
+      size: 1503
+    - path: src/rally/agentes/ppo.py
+      hash: md5
+      md5: 1b7fe38fe068273fc59763495b4d8a68
+      size: 14770
+    - path: src/rally/agentes/qlearning.py
+      hash: md5
+      md5: 8d4a44e577e6f4f3e381bfe72041b776
+      size: 3321
+    - path: src/rally/env.py
+      hash: md5
+      md5: 7aa733d8c59879b1a00534fc46360ddf
+      size: 13564
+    - path: src/rally/generalizacion.py
+      hash: md5
+      md5: 447ede339f9804c3a24cef188276d8d4
+      size: 4630
+    - path: src/rally/pipeline.py
+      hash: md5
+      md5: aa514c27cd3c106c7d2499eff8fd453d
+      size: 17661
+    - path: src/rally/policies.py
+      hash: md5
+      md5: 03cf55dcd1567b84059f3dd33506e718
+      size: 4324
+    - path: src/rally/track.py
+      hash: md5
+      md5: 292b0621f3fc86bcbb1e90d5d1540fa4
+      size: 13526
+    params:
+      params.yaml:
+        ambiente:
+          track_width: 8.0
+          mu: 0.9
+          a_max: 4.0
+          r_max: 20.0
+        evaluacion.mu_mojado: 0.5
+        evaluacion.mu_seco: 0.9
+        generalizacion:
+          episodios: 100
+          semilla_inicial: 1000
+          caida_max: 20
+          pilotos:
+          - experto
+          - prudente
+          - maestro
+          - qlearning
+          - ppo
+          pruebas:
+          - nombre: llovizna
+            ambiente:
+              mu: 0.65
+            referencia: mojado
+          - nombre: casi_seco
+            ambiente:
+              mu: 0.72
+            referencia: mojado
+          - nombre: mas_agarre
+            ambiente:
+              mu: 1.1
+            referencia: seco
+          - nombre: salida_torcida
+            ambiente:
+              mu: 0.9
+              start_lateral_noise: 1.5
+              start_heading_noise_deg: 15.0
+            referencia: seco
+          - nombre: salida_torcida_lluvia
+            ambiente:
+              mu: 0.5
+              start_lateral_noise: 1.5
+              start_heading_noise_deg: 15.0
+            referencia: mojado
+          - nombre: sensores_ruido
+            ambiente:
+              mu: 0.9
+            ruido_sensores: 0.03
+            referencia: seco
+          - nombre: sensores_ruido_lluvia
+            ambiente:
+              mu: 0.5
+            ruido_sensores: 0.03
+            referencia: mojado
+          - nombre: diluvio
+            ambiente:
+              mu: 0.4
+    outs:
+    - path: metrics/generalizacion.json
+      hash: md5
+      md5: 3aa47ee99e3aa1ec8573b6394e5d4840
+      size: 17711
