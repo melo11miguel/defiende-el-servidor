@@ -29,7 +29,9 @@ function texturaDecoracion() {
   return t;
 }
 
-export function crearCarro({ largo: L, ancho: W, ejes }) {
+// Carro básico (geometría simple): se muestra mientras carga el modelo realista
+// o si no se puede descargar.
+function crearCarroBasico({ largo: L, ancho: W, ejes }) {
   const grupo = new THREE.Group();
 
   // Silueta lateral (x a lo largo, y altura) extruida a lo ancho
@@ -94,7 +96,9 @@ export function crearCarro({ largo: L, ancho: W, ejes }) {
   const ruedas = [];
   const geoLlanta = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 28);
   const llanta = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.92 });
-  for (const [x, z, delantera] of [[ejes / 2, W / 2, true], [ejes / 2, -W / 2, true], [-ejes / 2, W / 2, false], [-ejes / 2, -W / 2, false]]) {
+  // Ruedas metidas bajo la carrocería (antes sobresalían: el centro iba en el borde del carro)
+  const zr = W / 2 - 0.17;
+  for (const [x, z, delantera] of [[ejes / 2, zr, true], [ejes / 2, -zr, true], [-ejes / 2, zr, false], [-ejes / 2, -zr, false]]) {
     const pivote = new THREE.Group();
     pivote.position.set(x, 0.36, z);
     const giro = new THREE.Group();
@@ -119,6 +123,167 @@ export function crearCarro({ largo: L, ancho: W, ejes }) {
   faro.target.position.set(L / 2 + 10, 0, 0);
   grupo.add(faro, faro.target);
   return { grupo, ruedas, luzFreno, faro };
+}
+
+// ------------------------------------------------------------------ carro realista
+// Modelo 3D de deportivo del ejemplo oficial de three.js ("webgl_materials_car",
+// modelo de vicent091036). Se descarga del repositorio de three.js; no se guarda
+// en este repo. Se le pone nuestra decoración: pintura azul y dorada, rines dorados
+// y el número 24. Las medidas se ajustan a las del simulador (distancia entre ejes).
+const BASE = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r170/examples/models/gltf/";
+const DRACO = "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/";
+const AZUL = new THREE.Color(0x1a3fb8), AZUL_OSCURO = new THREE.Color(0x0b1d5c);
+const DORADO = new THREE.Color(0xb8862b), FRANJA = new THREE.Color(0xffd23f);
+
+function texturaNumero() {
+  const c = document.createElement("canvas");
+  c.width = 512; c.height = 256;
+  const g = c.getContext("2d");
+  g.fillStyle = "rgba(248,250,252,0.96)";
+  g.beginPath(); g.roundRect(8, 30, 200, 196, 26); g.fill();
+  g.fillStyle = "#0b1d5c"; g.font = "900 150px Inter, Arial"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText("24", 108, 134);
+  g.textAlign = "left";
+  g.font = "italic 900 62px Inter, Arial"; g.fillStyle = "#ffd23f"; g.fillText("AUTONOMOUS", 222, 104);
+  g.fillStyle = "#f8fafc"; g.fillText("RALLY", 222, 170);
+  g.font = "700 30px Inter, Arial"; g.fillStyle = "#cbd5e1"; g.fillText("MLOps · PPO", 226, 222);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  // La proyección de DecalGeometry invierte el eje horizontal: se voltea para que se lea bien
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.x = -1;
+  t.offset.x = 1;
+  return t;
+}
+
+// Pinta la carrocería con colores por vértice según la posición en el carro:
+// adelante y arriba azul, abajo y atrás dorado, con una franja amarilla entre ambos.
+function pintarCarroceria(mesh, raiz) {
+  const geo = mesh.geometry;
+  const pos = geo.attributes.position;
+  const m = new THREE.Matrix4().copy(raiz.matrixWorld).invert().multiply(mesh.matrixWorld);
+  const v = new THREE.Vector3(), c = new THREE.Color(), col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(m);  // x adelante, y arriba, z lateral
+    const corte = -v.x * 0.33 + (0.78 - v.y) * 1.25;  // diagonal que sube hacia atrás
+    const t = THREE.MathUtils.smoothstep(corte, 0.05, 0.35);
+    c.copy(AZUL).lerp(AZUL_OSCURO, THREE.MathUtils.clamp((v.y - 0.9) * 1.6, 0, 1)).lerp(DORADO, t);
+    if (Math.abs(corte - 0.2) < 0.035) c.copy(FRANJA);
+    col.set([c.r, c.g, c.b], i * 3);
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+}
+
+async function cargarModelo({ largo: L, ancho: W, ejes }, luzFreno, faro) {
+  const [{ GLTFLoader }, { DRACOLoader }, { DecalGeometry }] = await Promise.all([
+    import("three/addons/loaders/GLTFLoader.js"),
+    import("three/addons/loaders/DRACOLoader.js"),
+    import("three/addons/geometries/DecalGeometry.js"),
+  ]);
+  const draco = new DRACOLoader().setDecoderPath(DRACO);
+  const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync(BASE + "ferrari.glb");
+  const modelo = gltf.scene;
+
+  // Orientación y escala: el modelo mira hacia -z y tiene 2.65 m entre ejes.
+  const raiz = new THREE.Group();          // marco del carro: x adelante, y arriba, z lateral
+  const ajuste = new THREE.Group();
+  const escala = ejes / 2.65;
+  ajuste.rotation.y = -Math.PI / 2;        // -z del modelo -> +x del carro
+  ajuste.scale.setScalar(escala);
+  ajuste.position.x = 0.17 * escala;       // centra el punto medio entre ejes en el origen
+  ajuste.add(modelo);
+  raiz.add(ajuste);
+  raiz.updateMatrixWorld(true);
+
+  // Materiales
+  const pintura = new THREE.MeshPhysicalMaterial({
+    vertexColors: true, metalness: 0.75, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.04,
+    iridescence: 0.25, iridescenceIOR: 1.6,
+  });
+  const dorado = new THREE.MeshStandardMaterial({ color: 0xc9a227, metalness: 1, roughness: 0.22 });
+  const vidrio = new THREE.MeshPhysicalMaterial({ color: 0x0a0f1a, metalness: 0.25, roughness: 0.02,
+    transmission: 0.35, transparent: true, opacity: 0.85, clearcoat: 1 });
+  const faros = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff3c4, emissiveIntensity: 2.5 });
+  modelo.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    const n = o.name;
+    if (n === "body") { pintarCarroceria(o, raiz); o.material = pintura; }
+    else if (n.startsWith("rim_")) o.material = dorado;
+    else if (n === "glass") o.material = vidrio;
+    else if (n === "lights_red") o.material = luzFreno;  // la misma luz de freno que maneja el visor
+    else if (n === "lights" || n === "leds") o.material = faros;
+    else if (n === "yellow_trim") o.visible = false;  // escudo de la marca original: no se muestra
+  });
+
+  // Sombra de contacto bajo el carro (textura del mismo ejemplo)
+  const ao = await new THREE.TextureLoader().loadAsync(BASE + "ferrari_ao.png");
+  const sombra = new THREE.Mesh(new THREE.PlaneGeometry(0.655 * 4, 1.3 * 4),
+    new THREE.MeshBasicMaterial({ map: ao, blending: THREE.MultiplyBlending, toneMapped: false,
+      transparent: true, premultipliedAlpha: true }));
+  sombra.rotation.x = -Math.PI / 2;
+  sombra.position.y = 0.01;
+  sombra.renderOrder = 2;
+  modelo.add(sombra);
+
+  // Número 24 en las dos puertas (calcomanía proyectada sobre la carrocería)
+  const cuerpo = modelo.getObjectByName("body");
+  const mapa = texturaNumero();
+  const ray = new THREE.Raycaster();
+  for (const lado of [1, -1]) {
+    const desde = new THREE.Vector3(-0.3, 0.6, lado * 3), hacia = new THREE.Vector3(0, 0, -lado);
+    ray.set(raiz.localToWorld(desde.clone()), hacia.transformDirection(raiz.matrixWorld));
+    const hit = ray.intersectObject(cuerpo, false)[0];
+    if (!hit) continue;
+    const orient = new THREE.Euler().setFromRotationMatrix(
+      new THREE.Matrix4().lookAt(hit.point, hit.point.clone().add(ray.ray.direction.clone().negate()), new THREE.Vector3(0, 1, 0)));
+    const geo = new DecalGeometry(cuerpo, hit.point, orient, new THREE.Vector3(2.05, 1.0, 0.8));
+    const decal = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({
+      map: mapa, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4,
+      metalness: 0.2, roughness: 0.25, clearcoat: 1 }));
+    raiz.attach(decal);
+  }
+
+  // Ruedas: cada una en un pivote (dirección) → giro (rodar), en el marco del carro
+  const ruedas = [];
+  for (const [nombre, delantera] of [["wheel_fl", true], ["wheel_fr", true], ["wheel_rl", false], ["wheel_rr", false]]) {
+    const rueda = modelo.getObjectByName(nombre);
+    if (!rueda) continue;
+    const p = new THREE.Vector3();
+    rueda.getWorldPosition(p);
+    raiz.worldToLocal(p);
+    const pivote = new THREE.Group(), giro = new THREE.Group();
+    pivote.position.copy(p);
+    pivote.add(giro);
+    raiz.add(pivote);
+    raiz.updateMatrixWorld(true);
+    giro.attach(rueda);
+    ruedas.push({ pivote, giro, delantera });
+  }
+
+  faro.position.set(L / 2, 0.65, 0);
+  faro.target.position.set(L / 2 + 10, 0, 0);
+  return { raiz, ruedas };
+}
+
+// Devuelve el carro básico de inmediato y lo cambia por el realista cuando termina
+// de cargar. `alCargar(ruedas)` avisa al visor que ahora hay otras ruedas que animar.
+export function crearCarro(medidas, { alCargar } = {}) {
+  const basico = crearCarroBasico(medidas);
+  const grupo = new THREE.Group();
+  grupo.add(basico.grupo);
+  basico.grupo.remove(basico.faro, basico.faro.target);
+  grupo.add(basico.faro, basico.faro.target);
+  cargarModelo(medidas, basico.luzFreno, basico.faro)
+    .then(({ raiz, ruedas }) => {
+      grupo.remove(basico.grupo);
+      grupo.add(raiz);
+      if (alCargar) alCargar(ruedas);
+    })
+    .catch((e) => console.warn("No se pudo cargar el carro realista; se usa el básico.", e));
+  return { grupo, ruedas: basico.ruedas, luzFreno: basico.luzFreno, faro: basico.faro };
 }
 
 // ------------------------------------------------------------------ humo

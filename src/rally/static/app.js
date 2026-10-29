@@ -292,7 +292,8 @@ let luzFreno, faro;
 
 let humo = null;
 function construirCarro() {
-  const c = crearCarro(pista.carro);
+  // Cuando carga el modelo realista, sus ruedas reemplazan a las del carro básico
+  const c = crearCarro(pista.carro, { alCargar: (nuevas) => { ruedas.length = 0; ruedas.push(...nuevas); } });
   carro.add(c.grupo);
   ruedas.push(...c.ruedas);
   luzFreno = c.luzFreno;
@@ -429,6 +430,12 @@ function actualizarCamara(est, dt) {
   } else if (camara === "cabina") {
     camObjetivo.copy(pos).addScaledVector(dir, -0.3).add(new THREE.Vector3(0, 1.35, 0));
     camMirar.copy(pos).addScaledVector(dir, 12).add(new THREE.Vector3(0, 0.9, 0));
+    suave = 1;
+  } else if (camara === "vitrina") {
+    // Gira despacio alrededor del carro, a la altura de los ojos (como el menú de un videojuego)
+    const ang = params.has("vang") ? +params.get("vang") : performance.now() / 1000 * 0.3;
+    camObjetivo.copy(pos).add(new THREE.Vector3(Math.cos(ang) * 6.2, 1.5, Math.sin(ang) * 6.2));
+    camMirar.copy(pos).add(new THREE.Vector3(0, 0.55, 0));
     suave = 1;
   } else if (camara === "aerea") {
     const [MX] = pista.mapa;
@@ -1018,6 +1025,7 @@ function conectar() {
   document.querySelectorAll("#camaras button[data-cam]").forEach((b) => (b.onclick = () => ponerCamara(b.dataset.cam)));
   const paneles = () => document.body.classList.toggle("limpio");
   $("btn-paneles").onclick = paneles;
+  if (params.get("limpio") === "1") document.body.classList.add("limpio");
   if (params.get("tab") === "exp") setTimeout(() => document.querySelector('.pestanas button[data-tab="exp"]').click(), 0);
   document.querySelectorAll("#sel-vel button").forEach((b) => (b.onclick = () => {
     velocidad = parseFloat(b.dataset.v);
@@ -1038,8 +1046,8 @@ function conectar() {
 
   addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
-    const cams = ["persecucion", "tv", "aerea", "cabina", "libre"];
-    if (e.key >= "1" && e.key <= "5") ponerCamara(cams[+e.key - 1]);
+    const cams = ["persecucion", "tv", "aerea", "cabina", "libre", "vitrina"];
+    if (e.key >= "1" && e.key <= "6") ponerCamara(cams[+e.key - 1]);
     if (e.code === "Space") { e.preventDefault(); playPausa(); }
     if (e.key === "r" || e.key === "R") $("btn-reiniciar").onclick();
     if (e.key === "h" || e.key === "H") paneles();
