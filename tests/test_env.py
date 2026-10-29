@@ -158,7 +158,7 @@ def test_sensor_de_agarre_detecta_lluvia():
     assert mojado.mu_est == pytest.approx(0.5, abs=0.02)
     assert seco.mu_est > 1.0  # en seco el freno no satura: sigue sin medirse un límite
     obs = mojado._obs()
-    assert obs.shape == (19,) and obs[17] == 1.0
+    assert obs.shape == (20,) and obs[17] == 1.0 and obs[19] == 1.0   # derrape y lluvia
 
 
 def test_parametro_desconocido_falla():

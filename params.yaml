@@ -30,8 +30,11 @@ ppo:
   capas: [128, 128]
   bc_epocas: 40          # preentrenamiento por imitación (0 = desde cero)
   dominio_aleatorio: true
-  mu_min: 0.5            # rango de adherencia sorteado en cada episodio
+  mu_min: 0.75           # v3: rango en seco
   mu_max: 1.0
+  prob_lluvia: 0.5       # v3: la mitad de los episodios con lluvia
+  lluvia_min: 0.45       # rango de adherencia con lluvia
+  lluvia_max: 0.6
   eval_cada: 100000      # pasos entre evaluaciones rápidas
   semilla: 0
 

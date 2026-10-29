@@ -23,14 +23,26 @@ from rally.env import AutonomousRallyEnv
 
 
 class AdherenciaAleatoria(gym.Wrapper):
-    """En cada reset sortea μ en [mu_min, mu_max] (el agente no lo observa)."""
+    """En cada reset sortea μ (el agente no ve el valor, solo si llueve).
 
-    def __init__(self, env, mu_min, mu_max):
+    Con `prob_lluvia`, esa fracción de episodios es con lluvia (μ en [lluvia_min,
+    lluvia_max]) y el resto en seco (μ en [mu_min, mu_max]). Así el modelo practica
+    con lluvia la mitad del tiempo y no aprende solo a ir rápido en seco (lo que le
+    pasó a la v2).
+    """
+
+    def __init__(self, env, mu_min, mu_max, prob_lluvia=None, lluvia_min=0.45, lluvia_max=0.6):
         super().__init__(env)
         self.mu_min, self.mu_max = mu_min, mu_max
+        self.prob_lluvia, self.lluvia_min, self.lluvia_max = prob_lluvia, lluvia_min, lluvia_max
 
     def reset(self, **kw):
-        self.env.unwrapped.cfg.mu = float(self.np_random.uniform(self.mu_min, self.mu_max))
+        r = self.np_random
+        if self.prob_lluvia is not None and r.random() < self.prob_lluvia:
+            mu = r.uniform(self.lluvia_min, self.lluvia_max)
+        else:
+            mu = r.uniform(self.mu_min, self.mu_max)
+        self.env.unwrapped.cfg.mu = float(mu)
         return self.env.reset(**kw)
 
 
@@ -38,7 +50,9 @@ def crear_env(ambiente, ppo_params, rank):
     def _f():
         env = AutonomousRallyEnv(**ambiente)
         if ppo_params.get("dominio_aleatorio"):
-            env = AdherenciaAleatoria(env, ppo_params["mu_min"], ppo_params["mu_max"])
+            env = AdherenciaAleatoria(env, ppo_params["mu_min"], ppo_params["mu_max"],
+                                      ppo_params.get("prob_lluvia"), ppo_params.get("lluvia_min", 0.45),
+                                      ppo_params.get("lluvia_max", 0.6))
         env.reset(seed=200_000 + ppo_params["semilla"] * 1000 + rank)  # lejos de las semillas de evaluación
         return env
     return _f

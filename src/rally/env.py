@@ -17,7 +17,8 @@ G = 9.81
 RAY_ANGLES = np.radians([-90, -60, -30, 0, 30, 60, 90])
 NOTAS_M = (10.0, 25.0, 50.0)  # "notas del copiloto": curvatura a estas distancias
 MU_EST_MAX = 1.2  # tope del agarre estimado (más que el asfalto más adherente)
-VERSION = "0.2-monaco-agarre"
+LLUVIA_MU = 0.75  # por debajo de esta adherencia se considera piso mojado (se ve llover)
+VERSION = "0.3-monaco-lluvia"
 
 
 @dataclass
@@ -57,8 +58,8 @@ class RallyConfig:
 class AutonomousRallyEnv(gym.Env):
     """Una vuelta al circuito pasando los checkpoints en orden hasta la meta.
 
-    Observación (19): [v, ω, sinφ, cosφ, d, eψ, 7 rayos, 3 notas de curvatura,
-    agarre usado, derrape, agarre estimado].
+    Observación (20): [v, ω, sinφ, cosφ, d, eψ, 7 rayos, 3 notas de curvatura,
+    agarre usado, derrape, agarre estimado, lluvia].
     Acción (2): [u_acel, u_dir] en [-1, 1].
     """
 
@@ -73,8 +74,8 @@ class AutonomousRallyEnv(gym.Env):
         self.render_mode = render_mode
         self.delta_max = math.radians(self.cfg.delta_max_deg)
 
-        low = np.array([0, -1, -1, -1, -2, -1] + [0] * 7 + [-1] * 3 + [0, 0, 0], dtype=np.float32)
-        high = np.array([1, 1, 1, 1, 2, 1] + [1] * 7 + [1] * 3 + [1, 1, 1], dtype=np.float32)
+        low = np.array([0, -1, -1, -1, -2, -1] + [0] * 7 + [-1] * 3 + [0, 0, 0, 0], dtype=np.float32)
+        high = np.array([1, 1, 1, 1, 2, 1] + [1] * 7 + [1] * 3 + [1, 1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
 
@@ -262,6 +263,9 @@ class AutonomousRallyEnv(gym.Env):
             min(self.grip_use, 1.0),
             float(self.skidding),
             self.mu_est / MU_EST_MAX,
+            # Sensor de lluvia (v0.3): el piloto VE que llueve (cámara/limpiaparabrisas),
+            # pero no sabe la adherencia exacta.
+            1.0 if cfg.mu < LLUVIA_MU else 0.0,
         ]
         return np.array(obs, dtype=np.float32)
 
