@@ -53,6 +53,20 @@ class PurePursuit:
         return np.array([u_acel, u_dir], dtype=np.float32)
 
 
+class Maestro:
+    """El profesor del PPO: mira la señal de lluvia (obs[19]) y maneja según el clima.
+
+    En seco supone μ = 0.8 y con lluvia μ = 0.45, el peor caso de cada rango del
+    entrenamiento, así que completa la vuelta con cualquier agarre de esos rangos.
+    """
+
+    def __init__(self, mu_seco=0.8, mu_lluvia=0.45):
+        self.seco, self.lluvia = PurePursuit(mu_seco), PurePursuit(mu_lluvia)
+
+    def __call__(self, obs, info):
+        return (self.lluvia if obs[19] > 0.5 else self.seco)(obs, info)
+
+
 class Aleatoria:
     """Acciones al azar: sirve para ver que el ambiente no regala puntos."""
 
@@ -82,6 +96,7 @@ def _modelo(nombre):
 POLITICAS = {
     "experto": ("Pure pursuit, asume piso seco (μ=0.9)", lambda seed: PurePursuit(0.9)),
     "prudente": ("Pure pursuit, asume lluvia (μ=0.5)", lambda seed: PurePursuit(0.5)),
+    "maestro": ("Pure pursuit que mira la señal de lluvia (profesor del PPO)", lambda seed: Maestro()),
     "aleatoria": ("Acciones al azar", lambda seed: Aleatoria(seed)),
     "qlearning": ("Agente Q-learning entrenado (tabla)", lambda seed: _modelo("qlearning")),
     "ppo": ("Agente PPO entrenado (red neuronal)", lambda seed: _modelo("ppo")),

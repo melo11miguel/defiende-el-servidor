@@ -155,13 +155,13 @@ def _ejemplo_obs():
     return np.zeros((1, AutonomousRallyEnv().observation_space.shape[0]), dtype=np.float32)
 
 
-def _evaluador_rapido(ambiente, pe, n=3):
+def _evaluador_rapido(ambiente, pe, n=5):
     """Evaluación corta durante el entrenamiento (n semillas, seco y mojado)."""
     def evaluar(modelo):
         res = {}
         for nombre, mu in (("seco", pe["mu_seco"]), ("mojado", pe["mu_mojado"])):
             env = AutonomousRallyEnv(**{**ambiente, "mu": mu})
-            ok, prog = 0, 0.0
+            ok, prog, tiempos = 0, 0.0, []
             for k in range(n):
                 obs, info = env.reset(seed=pe["semilla_eval_rapida"] + k)
                 done = False
@@ -171,8 +171,11 @@ def _evaluador_rapido(ambiente, pe, n=3):
                     done = term or trunc
                 ok += info["outcome"] == "exito"
                 prog += info["s_best"] / track.LAP
+                if info["outcome"] == "exito":
+                    tiempos.append(info["t"])
             res[f"{nombre}_vueltas_pct"] = 100 * ok / n
             res[f"{nombre}_progreso_pct"] = 100 * prog / n
+            res[f"{nombre}_tiempo_s"] = round(float(np.mean(tiempos)), 2) if tiempos else None
         return res
     return evaluar
 

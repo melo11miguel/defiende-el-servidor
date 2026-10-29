@@ -46,6 +46,7 @@ stages:
       - src/rally/env.py
       - src/rally/track.py
       - src/rally/pipeline.py
+      - src/rally/policies.py
       - src/rally/agentes/ppo.py
     params:
       - ambiente
@@ -88,4 +89,26 @@ stages:
       - evaluacion
     metrics:
       - metrics/registro.json:
+          cache: false
+
+  generalizacion:
+    cmd: rally pipeline generalizacion
+    deps:
+      - models/qlearning
+      - models/ppo
+      - src/rally/env.py
+      - src/rally/track.py
+      - src/rally/policies.py
+      - src/rally/pipeline.py
+      - src/rally/generalizacion.py
+      - src/rally/agentes/ppo.py
+      - src/rally/agentes/qlearning.py
+      - src/rally/agentes/discreto.py
+    params:
+      - ambiente
+      - generalizacion
+      - evaluacion.mu_seco
+      - evaluacion.mu_mojado
+    metrics:
+      - metrics/generalizacion.json:
           cache: false

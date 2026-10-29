@@ -287,7 +287,9 @@ def cmd_pipeline(args):
     etapas = {"datos": pipeline.etapa_datos, "evaluar": pipeline.etapa_evaluar,
               "registrar": pipeline.etapa_registrar,
               "qlearning": lambda: pipeline.etapa_qlearning(vivo),
-              "ppo": lambda: pipeline.etapa_ppo(vivo)}
+              "ppo": lambda: pipeline.etapa_ppo(vivo),
+              "generalizacion": lambda: __import__(
+                  "rally.generalizacion", fromlist=["x"]).etapa_generalizacion()}
     etapas[args.etapa]()
     return 0
 
@@ -362,7 +364,8 @@ def main(argv=None):
     w.set_defaults(fn=lambda a: __import__("rally.web", fromlist=["servir"]).servir(a.puerto))
 
     pl = sub.add_parser("pipeline", help="una etapa del pipeline de MLOps (la usa DVC)")
-    pl.add_argument("etapa", choices=["datos", "qlearning", "ppo", "evaluar", "registrar"])
+    pl.add_argument("etapa", choices=["datos", "qlearning", "ppo", "evaluar", "generalizacion",
+                                      "registrar"])
     pl.add_argument("--vivo", action="store_true",
                     help="transmitir el entrenamiento al visor 3D (también con RALLY_VIVO=1)")
     pl.set_defaults(fn=cmd_pipeline)

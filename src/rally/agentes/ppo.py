@@ -1,11 +1,15 @@
 """Agente con red neuronal: PPO (Stable-Baselines3 + PyTorch).
 
-1. Preentrenamiento por imitación (behavior cloning) con las demostraciones
-   del dataset: la red aprende a imitar al piloto experto.
+1. Preentrenamiento por imitación con DAgger: la red maneja y el piloto maestro
+   (policies.Maestro) le dice qué habría hecho en cada estado que visitó. Copiar
+   vueltas perfectas no basta (behavior cloning, v1–v3): al primer error la red
+   llega a estados que nunca vio y choca en Sainte Dévote.
 2. Aprendizaje por refuerzo con PPO en varias simulaciones en paralelo: la red
    mejora sola con prueba y error, a partir de la recompensa.
 3. Dominio aleatorio (opcional): en cada episodio la adherencia se sortea en un
    rango, para que el modelo aprenda a manejar también con lluvia.
+4. Se guarda el mejor modelo de las evaluaciones rápidas: si PPO empeora la red,
+   el resultado final nunca queda peor que lo mejor que se vio.
 """
 
 import json
@@ -83,11 +87,102 @@ def imitar(model, demos_path, epocas, lr=1e-3, batch=1024):
     return perdidas
 
 
+def _media(pol, obs):
+    return pol.get_distribution(obs).distribution.mean
+
+
+def dagger(model, ambiente, p, evaluador=None):
+    """DAgger: la red maneja, el maestro etiqueta cada estado visitado y la red se reentrena.
+
+    Iteración 0: solo maneja el maestro. Después, con probabilidad beta (que baja a 0)
+    maneja el maestro y si no la red; todos los datos se acumulan.
+    """
+    from rally.policies import Maestro
+
+    maestro = Maestro(p["maestro_mu_seco"], p["maestro_mu_lluvia"])
+    env = crear_env(ambiente, p, 99)()
+    rng = np.random.default_rng(p["semilla"])
+    pol = model.policy
+    opt = torch.optim.Adam(pol.parameters(), lr=1e-3)
+    O, A, perdidas = [], [], []
+    for it in range(p["dagger_iter"]):
+        beta = 1.0 if it == 0 else max(0.0, 0.5 - 0.1 * (it - 1))
+        for _ in range(p["dagger_episodios"]):
+            obs, info = env.reset()
+            done = False
+            while not done:
+                a_m = maestro(obs, info)
+                O.append(obs)
+                A.append(a_m)
+                if rng.random() >= beta:
+                    with torch.no_grad():
+                        a_m = _media(pol, torch.as_tensor(obs[None])).numpy()[0]
+                obs, _, term, trunc, info = env.step(np.clip(a_m, -1, 1))
+                done = term or trunc
+        o = torch.as_tensor(np.array(O), dtype=torch.float32)
+        a = torch.as_tensor(np.array(A), dtype=torch.float32)
+        for _ in range(p["dagger_epocas"]):
+            perm = torch.randperm(len(o))
+            for i in range(0, len(o), 512):
+                idx = perm[i:i + 512]
+                loss = ((_media(pol, o[idx]) - a[idx]) ** 2).mean()
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+        perdidas.append(loss.item())
+        mlflow.log_metrics({"dagger_perdida": perdidas[-1], "dagger_datos": len(O)}, step=it)
+        if evaluador:
+            m = evaluador(model)
+            mlflow.log_metrics({f"dagger_{k}": v for k, v in m.items() if v is not None}, step=it)
+            print(f"  DAgger {it + 1}/{p['dagger_iter']}: seco {m['seco_vueltas_pct']:.0f}% · "
+                  f"mojado {m['mojado_vueltas_pct']:.0f}% ({len(O):,} estados)", flush=True)
+    env.close()
+    return perdidas
+
+
+def puntaje(m):
+    """Orden de las evaluaciones rápidas: vueltas, luego avance, luego tiempo."""
+    tiempo = (m.get("seco_tiempo_s") or 999) + (m.get("mojado_tiempo_s") or 999)
+    return (m["seco_vueltas_pct"] + m["mojado_vueltas_pct"],
+            m["seco_progreso_pct"] + m["mojado_progreso_pct"], -tiempo)
+
+
+class MejorModelo:
+    """Guarda el modelo con el mejor puntaje de las evaluaciones rápidas (sobrevive apagones)."""
+
+    def __init__(self, carpeta):
+        self.carpeta = Path(carpeta)
+        self.ruta = self.carpeta / "mejor.zip"
+        try:
+            est = json.loads((self.carpeta / "mejor.json").read_text(encoding="utf-8"))
+            self.puntaje, self.metricas, self.paso = tuple(est["puntaje"]), est["metricas"], est["paso"]
+        except (OSError, ValueError, KeyError):
+            self.puntaje, self.metricas, self.paso = None, None, None
+
+    def revisar(self, model, m, paso):
+        if self.puntaje is not None and puntaje(m) <= self.puntaje:
+            return False
+        self.carpeta.mkdir(parents=True, exist_ok=True)
+        tmp = self.carpeta / "mejor.tmp.zip"
+        model.save(tmp)
+        tmp.replace(self.ruta)
+        self.puntaje, self.metricas, self.paso = puntaje(m), m, int(paso)
+        (self.carpeta / "mejor.json").write_text(json.dumps(
+            {"puntaje": self.puntaje, "metricas": m, "paso": self.paso}), encoding="utf-8")
+        return True
+
+    def borrar(self):
+        for f in ("mejor.zip", "mejor.json"):
+            (self.carpeta / f).unlink(missing_ok=True)
+
+
 class Seguimiento(BaseCallback):
     """Registra cada episodio en MLflow y transmite el episodio del env 0 al visor."""
 
-    def __init__(self, grabador, evaluador, eval_cada, n_envs, punto=None, pasos_iniciales=0, episodios_iniciales=0):
+    def __init__(self, grabador, evaluador, eval_cada, n_envs, punto=None, pasos_iniciales=0,
+                 episodios_iniciales=0, mejor=None):
         super().__init__()
+        self.mejor = mejor
         self.grabador = grabador
         self.evaluador = evaluador
         self.eval_cada = eval_cada
@@ -127,7 +222,10 @@ class Seguimiento(BaseCallback):
         if self.evaluador and self.num_timesteps >= self.prox_eval:
             self.prox_eval += self.eval_cada
             m = self.evaluador(self.model)
-            mlflow.log_metrics({f"eval_{k}": v for k, v in m.items()}, step=self.num_timesteps)
+            mlflow.log_metrics({f"eval_{k}": v for k, v in m.items() if v is not None},
+                               step=self.num_timesteps)
+            if self.mejor:
+                self.mejor.revisar(self.model, m, self.num_timesteps)
         if self.punto and self.num_timesteps >= self.prox_punto:
             self.prox_punto += PUNTO_CADA
             self.punto.guardar(self.model, self.n_ep)
@@ -195,25 +293,43 @@ def entrenar(ambiente, p, demos_path, salida, grabador=None, evaluador=None, pun
             "MlpPolicy", venv, learning_rate=p["learning_rate"], n_steps=p["n_steps"],
             batch_size=p["batch_size"], gamma=p["gamma"], gae_lambda=0.95, ent_coef=p["ent_coef"],
             clip_range=0.2, policy_kwargs={"net_arch": dict(pi=p["capas"], vf=p["capas"]),
-                                           "log_std_init": -1.0},
+                                           "log_std_init": p["log_std_init"]},
             seed=p["semilla"], device="cpu", verbose=0,
         )
-        perdidas = imitar(model, demos_path, p["bc_epocas"]) if p["bc_epocas"] > 0 else []
+        if p.get("dagger_iter", 0) > 0:
+            perdidas = dagger(model, ambiente, p, evaluador)
+        else:
+            perdidas = imitar(model, demos_path, p["bc_epocas"]) if p["bc_epocas"] > 0 else []
+    salida = Path(salida)
+    mejor = MejorModelo(punto.carpeta if punto else salida)
+    if not previo:
+        mejor.borrar()   # de una corrida anterior con otros parámetros
+        if evaluador:    # el punto de partida (red recién imitada) también compite
+            mejor.revisar(model, evaluador(model), 0)
     hechos = previo["pasos"] if previo else 0
     cb = Seguimiento(grabador, evaluador, p["eval_cada"], n_envs, punto, hechos,
-                     previo["episodios"] if previo else 0)
+                     previo["episodios"] if previo else 0, mejor if evaluador else None)
     model.learn(total_timesteps=max(p["pasos"] - hechos, 0), callback=cb, progress_bar=False,
                 reset_num_timesteps=not previo)
-    salida = Path(salida)
+    if evaluador:
+        mejor.revisar(model, evaluador(model), model.num_timesteps)
     salida.mkdir(parents=True, exist_ok=True)
+    if mejor.paso is not None:
+        model = PPO.load(mejor.ruta, device="cpu")
+        mlflow.log_metrics({f"mejor_{k}": v for k, v in mejor.metricas.items() if v is not None})
+        mlflow.set_tag("mejor_paso", mejor.paso)
+        print(f"  Mejor modelo: paso {mejor.paso:,} · {mejor.metricas}")
     model.save(salida / "modelo.zip")
     (salida / "info.json").write_text(json.dumps({
-        "algoritmo": "PPO", "pasos": p["pasos"], "episodios": cb.n_ep,
-        "bc_perdida_final": perdidas[-1] if perdidas else None,
+        "algoritmo": "PPO" + (" + DAgger" if p.get("dagger_iter", 0) > 0 else ""),
+        "pasos": p["pasos"], "episodios": cb.n_ep,
+        "imitacion_perdida_final": perdidas[-1] if perdidas else None,
+        "mejor_paso": mejor.paso, "mejor_eval_rapida": mejor.metricas,
         "observacion": int(venv.observation_space.shape[0]),
         "reanudado_desde_paso": hechos or None,
     }, indent=2), encoding="utf-8")
     venv.close()
     if punto:
         punto.borrar()   # terminó: el punto de guardado ya no hace falta
+        mejor.borrar()
     return model, cb.n_ep

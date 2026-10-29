@@ -20,15 +20,21 @@ qlearning:
   semilla: 0
 
 ppo:
-  pasos: 3000000        # v2: el triple de práctica
+  pasos: 2000000        # v4: PPO afina lo que aprendió con DAgger
   n_envs: 12
-  learning_rate: 0.0003
+  learning_rate: 0.0001  # v4: más bajo para no deshacer lo imitado
   n_steps: 1024
   batch_size: 2048
   gamma: 0.995
   ent_coef: 0.0
   capas: [128, 128]
-  bc_epocas: 40          # preentrenamiento por imitación (0 = desde cero)
+  log_std_init: -1.6     # ruido de exploración ≈ 0.2 (v3: 0.37)
+  bc_epocas: 40          # imitación simple (solo si dagger_iter = 0)
+  dagger_iter: 10        # v4: imitación con DAgger (0 = usar bc_epocas)
+  dagger_episodios: 12   # vueltas por iteración
+  dagger_epocas: 15
+  maestro_mu_seco: 0.8   # el maestro supone el peor agarre de cada rango
+  maestro_mu_lluvia: 0.45
   dominio_aleatorio: true
   mu_min: 0.75           # v3: rango en seco
   mu_max: 1.0
@@ -45,4 +51,23 @@ evaluacion:          # protocolo de la ficha
   mu_mojado: 0.5
   semilla_eval_rapida: 10000   # evaluación corta durante el entrenamiento de PPO
   base: experto
-  pilotos: [experto, prudente, qlearning, ppo]
+  pilotos: [experto, prudente, maestro, qlearning, ppo]
+
+generalizacion:      # prueba de sobreajuste: condiciones que el PPO nunca practicó
+  episodios: 100
+  semilla_inicial: 1000   # distintas a las de la ficha (0–99) y a las de entrenamiento
+  caida_max: 20           # puntos de vueltas que puede perder frente a su referencia
+  pilotos: [experto, prudente, maestro, qlearning, ppo]
+  pruebas:
+    - {nombre: llovizna, ambiente: {mu: 0.65}, referencia: mojado}
+    - {nombre: casi_seco, ambiente: {mu: 0.72}, referencia: mojado}
+    - {nombre: mas_agarre, ambiente: {mu: 1.1}, referencia: seco}
+    - nombre: salida_torcida
+      ambiente: {mu: 0.9, start_lateral_noise: 1.5, start_heading_noise_deg: 15.0}
+      referencia: seco
+    - nombre: salida_torcida_lluvia
+      ambiente: {mu: 0.5, start_lateral_noise: 1.5, start_heading_noise_deg: 15.0}
+      referencia: mojado
+    - {nombre: sensores_ruido, ambiente: {mu: 0.9}, ruido_sensores: 0.03, referencia: seco}
+    - {nombre: sensores_ruido_lluvia, ambiente: {mu: 0.5}, ruido_sensores: 0.03, referencia: mojado}
+    - {nombre: diluvio, ambiente: {mu: 0.4}}   # más difícil que todo lo visto: solo informativa
