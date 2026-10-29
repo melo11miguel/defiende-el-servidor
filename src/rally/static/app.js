@@ -12,6 +12,7 @@ import { construirEscenario } from "./escenario.js";
 import { crearCarro, crearHumo } from "./carro.js";
 import { pbr, cargas } from "./texturas.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { FXAAShader } from "three/addons/shaders/FXAAShader.js";
 
 const $ = (id) => document.getElementById(id);
 const P = (x, y, h = 0) => new THREE.Vector3(x, h, -y);
@@ -34,14 +35,33 @@ let reproduciendo = true, velocidad = 1, tiempo = 0, camara = params.get("cam") 
 let mu = parseFloat(params.get("mu") || "0.9");
 
 // ------------------------------------------------------------------ escena
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-// ?calidad=baja: para computadores sin tarjeta gráfica (sombras livianas, sin MSAA ni bloom)
-const CALIDAD_BAJA = params.get("calidad") === "baja";
-let resolucion = CALIDAD_BAJA ? 0.75 : Math.min(devicePixelRatio, 1.25);
+// El antialiasing lo hace el post-procesado (MSAA o FXAA), no el lienzo.
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+
+// Niveles de calidad. "auto" elige según la tarjeta gráfica: en gráficos integrados
+// (Intel, móviles) usa "media" para mantener la resolución al 100 % y buenos FPS.
+const PRESETS = {
+  alta:  { nombre: "Alta",  px: 1.25, msaa: 4, fxaa: false, bloom: true,  sombras: 2048, cadaSombra: 1 },
+  media: { nombre: "Media", px: 1.0,  msaa: 0, fxaa: true,  bloom: false, sombras: 1024, cadaSombra: 2 },
+  baja:  { nombre: "Baja",  px: 0.8,  msaa: 0, fxaa: true,  bloom: false, sombras: 0,    cadaSombra: 1 },
+};
+const GPU = (() => {
+  const gl = renderer.getContext(), ext = gl.getExtension("WEBGL_debug_renderer_info");
+  return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "";
+})();
+const INTEGRADA = /intel|uhd|iris|mali|adreno|powervr|swiftshader|apple gpu/i.test(GPU);
+let eleccion = params.get("calidad");
+try { eleccion = eleccion || localStorage.getItem("rally-calidad"); } catch (e) { /* sin almacenamiento */ }
+eleccion = PRESETS[eleccion] ? eleccion : "auto";
+const CALIDAD = eleccion === "auto" ? (INTEGRADA ? "media" : "alta") : eleccion;
+const Q = PRESETS[CALIDAD];
+
+let resolucion = Math.min(devicePixelRatio, Q.px);
 renderer.setPixelRatio(resolucion);
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = Q.sombras > 0;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = Q.cadaSombra === 1;   // en "media" las sombras se recalculan un cuadro sí, uno no
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -50,13 +70,12 @@ $("escena").appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 4000);
 cam.position.set(0, 60, 70);
-// Post-procesado: brillo suave (bloom) en faros, luces del túnel y sol
-// Render con antialiasing (MSAA x4) en el post-procesado
+// Post-procesado: MSAA (alta) o FXAA (media/baja), brillo suave (bloom) y gradación de color
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight,
-  { samples: CALIDAD_BAJA ? 0 : 4, type: THREE.HalfFloatType }));
+  { samples: Q.msaa, type: THREE.HalfFloatType }));
 composer.addPass(new RenderPass(scene, cam));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.16, 0.5, 0.95);
-if (!CALIDAD_BAJA) composer.addPass(bloom);
+if (Q.bloom) composer.addPass(bloom);
 composer.addPass(new OutputPass());
 // Gradación de color: un poco más de contraste y saturación + viñeta (como una cámara de TV)
 composer.addPass(new ShaderPass({
@@ -73,6 +92,11 @@ composer.addPass(new ShaderPass({
       gl_FragColor = c;
     }`,
 }));
+// FXAA: suaviza bordes casi sin costo (en vez de MSAA x4, caro en gráficos integrados)
+const fxaa = new ShaderPass(FXAAShader);
+const ajustarFxaa = () => fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * resolucion), 1 / (innerHeight * resolucion));
+if (Q.fxaa) { composer.addPass(fxaa); ajustarFxaa(); }
+let cuadro = 0;
 const controles = new OrbitControls(cam, renderer.domElement);
 controles.enableDamping = true;
 controles.maxPolarAngle = Math.PI * 0.48;
@@ -84,7 +108,8 @@ const sol = new THREE.DirectionalLight(0xfff1dc, 2.4);
 sol.name = "sol";
 sol.position.set(-60, 90, 40);
 sol.castShadow = true;
-sol.shadow.mapSize.set(CALIDAD_BAJA ? 1024 : 2048, CALIDAD_BAJA ? 1024 : 2048);
+sol.castShadow = Q.sombras > 0;
+sol.shadow.mapSize.set(Q.sombras || 512, Q.sombras || 512);
 Object.assign(sol.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 10, far: 260 });
 sol.shadow.bias = -0.0004;
 sol.shadow.normalBias = 0.04;
@@ -884,16 +909,17 @@ function medirFps(dt) {
   const fps = fpsCuadros / fpsAcum;
   fpsAcum = 0; fpsCuadros = 0; fpsVentana++;
   if (fpsVentana > 2) {                         // espera 3 s antes de ajustar (carga inicial)
-    const tope = Math.min(devicePixelRatio, 1.25), antes = resolucion;
-    if (fps < 40 && resolucion > 0.55) resolucion = Math.max(0.55, resolucion - 0.15);
+    const tope = Math.min(devicePixelRatio, Q.px), antes = resolucion;
+    if (fps < 40 && resolucion > 0.7) resolucion = Math.max(0.7, resolucion - 0.1);
     else if (fps > 58 && resolucion < tope) resolucion = Math.min(tope, resolucion + 0.1);
     if (resolucion !== antes) {
       renderer.setPixelRatio(resolucion);
       composer.setPixelRatio(resolucion);
       composer.setSize(innerWidth, innerHeight);
+      ajustarFxaa();
     }
   }
-  fpsEl.textContent = `${fps.toFixed(0)} FPS · ${Math.round(resolucion * 100)}%`;
+  fpsEl.textContent = `${fps.toFixed(0)} FPS · ${Math.round(resolucion * 100)}% · ${Q.nombre}`;
   fpsEl.className = fps < 30 ? "lento" : "";
 }
 
@@ -1000,6 +1026,8 @@ function animar() {
   }
   actualizarCamara(est, dt);
   actualizarHUD(est);
+  cuadro++;
+  if (Q.cadaSombra > 1 && cuadro % Q.cadaSombra === 0) renderer.shadowMap.needsUpdate = true;
   composer.render();
   medirFps(dt);
 }
@@ -1154,6 +1182,13 @@ function conectar() {
   document.querySelectorAll("#camaras button[data-cam]").forEach((b) => (b.onclick = () => ponerCamara(b.dataset.cam)));
   const paneles = () => document.body.classList.toggle("limpio");
   $("btn-paneles").onclick = paneles;
+  const selCalidad = $("sel-calidad");
+  selCalidad.value = eleccion;
+  selCalidad.title = `Tarjeta gráfica: ${GPU || "desconocida"} · en uso: ${Q.nombre}`;
+  selCalidad.onchange = () => {
+    try { localStorage.setItem("rally-calidad", selCalidad.value); } catch (e) { /* sin almacenamiento */ }
+    const u = new URL(location.href); u.searchParams.delete("calidad"); location.href = u.toString();
+  };
   if (params.get("limpio") === "1") document.body.classList.add("limpio");
   // Indicador de carga de los recursos pesados (cielo, carro, texturas, faroles)
   const indicador = document.createElement("div");
@@ -1201,6 +1236,7 @@ function conectar() {
     cam.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
     composer.setSize(innerWidth, innerHeight);
+    ajustarFxaa();
   });
 }
 

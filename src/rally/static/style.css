@@ -318,3 +318,6 @@ body.limpio #btn-paneles { background: rgba(250, 204, 21, 0.16); border-color: r
 #fps { position: fixed; right: 18px; bottom: 76px; font: 600 11px "JetBrains Mono", monospace; color: #86efac;
   background: rgba(13, 19, 33, .6); padding: 3px 8px; border-radius: 8px; z-index: 4; pointer-events: none; }
 #fps.lento { color: #fda4af; }
+
+#sel-calidad { width: auto; padding: 6px 8px; font-size: 13px; background: transparent; border-color: transparent; color: var(--texto); }
+#sel-calidad:hover { background: rgba(255, 255, 255, .08); }
