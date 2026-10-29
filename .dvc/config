@@ -1,5 +1,8 @@
 [core]
-    remote = almacen
+    remote = dagshub
     autostage = true
 ['remote "almacen"']
     url = /home/asus/dvc-almacen-rally
+['remote "dagshub"']
+    url = https://dagshub.com/kevin-nieto-callejas/autonomous-rally.dvc
+    auth = basic

@@ -97,6 +97,17 @@ queda ligada al código, los datos y los parámetros exactos que la produjeron.
 **Agentes:** Q-learning con tabla (15 acciones discretas) y PPO con red neuronal (128×128), preentrenado
 por imitación con el dataset y entrenado con adherencia aleatoria para aguantar la lluvia.
 
+**DagsHub (para todo el equipo):** los experimentos de MLflow y los datos y modelos de DVC están en
+https://dagshub.com/kevin-nieto-callejas/autonomous-rally (público).
+
+- Ver experimentos y modelos: pestaña **Experiments** del repo en DagsHub, o
+  https://dagshub.com/kevin-nieto-callejas/autonomous-rally.mlflow
+- Bajar datos y modelos: `dvc pull` (el remoto por defecto es DagsHub). Para leer un repo público no
+  hace falta token; para subir, configura tus credenciales una vez:
+  `dvc remote modify --local dagshub user TU_USUARIO` y `dvc remote modify --local dagshub password TU_TOKEN`.
+- El entrenamiento registra en el MLflow local (funciona sin internet). Después de `dvc repro`, quien
+  tenga `DAGSHUB_TOKEN` en `.env` corre `rally sincronizar` (copia solo lo nuevo) y `dvc push`.
+
 **Hugging Face:** crea un archivo `.env` (ya está en `.gitignore`) con `HF_TOKEN=hf_...` y corre
 `rally publicar --repo usuario/autonomous-rally-ppo` (privado por defecto; `--publico` para abrirlo).
 

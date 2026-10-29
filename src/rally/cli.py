@@ -301,6 +301,17 @@ def cmd_publicar(args):
     return 0
 
 
+def cmd_sincronizar(args):
+    from rally.sincronizar import sincronizar
+
+    console.print("[bold]Copiando experimentos de MLflow a DagsHub…[/]")
+    r = sincronizar(lambda m: console.print(m))
+    if r:
+        console.print(f"[bold green]{r['corridas_nuevas']} corridas y {r['modelos_nuevos']} versiones "
+                      f"de modelo nuevas.[/] Ver: [bright_cyan underline]{r['url']}[/]")
+    return 0
+
+
 def cmd_mlflow(args):
     import subprocess
 
@@ -360,6 +371,9 @@ def main(argv=None):
     pu.add_argument("--repo", required=True, help="usuario/nombre, p. ej. miguel/autonomous-rally-ppo")
     pu.add_argument("--publico", action="store_true", help="repositorio público (por defecto privado)")
     pu.set_defaults(fn=cmd_publicar)
+
+    si = sub.add_parser("sincronizar", help="copiar los experimentos de MLflow a DagsHub")
+    si.set_defaults(fn=cmd_sincronizar)
 
     ml = sub.add_parser("mlflow", help="abrir la interfaz de MLflow (experimentos y modelos)")
     ml.add_argument("--puerto", type=int, default=5001)
