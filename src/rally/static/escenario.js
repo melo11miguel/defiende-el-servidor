@@ -10,7 +10,7 @@ import { Sky } from "three/addons/objects/Sky.js";
 import { Water } from "three/addons/objects/Water.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { pbr, cielo } from "./texturas.js";
+import { pbr, cielo, registrar } from "./texturas.js";
 
 const rnd = (() => { let s = 12345; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
 const ARRIBA = new THREE.Vector3(0, 1, 0);
@@ -636,7 +636,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     lugaresFarol.push([px, py, h + (lado > 0 ? -Math.PI / 2 : Math.PI / 2)]);
   }
   // Poly Haven guarda las texturas del modelo en otras rutas: su API da el mapa de cada archivo
-  fetch("https://api.polyhaven.com/files/street_lamp_01").then((r) => r.json())
+  registrar("faroles", fetch("https://api.polyhaven.com/files/street_lamp_01").then((r) => r.json())
     .then((archivos) => {
       const g = archivos.gltf["1k"].gltf, rutas = Object.fromEntries(Object.entries(g.include).map(([k, v]) => [k, v.url]));
       const gestor = new THREE.LoadingManager();
@@ -658,7 +658,7 @@ export function construirEscenario({ scene, renderer, pista, P }) {
         im.castShadow = true;
         scene.add(im);
       });
-    }).catch((err) => console.warn("Faroles no disponibles", err));
+    })).catch((err) => console.warn("Faroles no disponibles", err));
 
   // ---------------------------------------------------------------- clima
   const luzSol = scene.getObjectByName("sol");
@@ -668,18 +668,18 @@ export function construirEscenario({ scene, renderer, pista, P }) {
     if (c) {
       scene.background = c.tex;
       scene.environment = c.env;
-      scene.backgroundIntensity = mojado ? 0.55 : 1;
-      scene.environmentIntensity = mojado ? 0.7 : 1;
+      scene.backgroundIntensity = mojado ? 0.6 : 0.9;
+      scene.environmentIntensity = mojado ? 0.7 : 0.85;
       sol.copy(c.sol);
     } else {
       scene.background = null;
       scene.environment = envProc;
     }
-    scene.fog = mojado ? new THREE.FogExp2(0x6b7480, 0.0038) : new THREE.FogExp2(0xd9b994, 0.00075);
-    renderer.toneMappingExposure = mojado ? 0.62 : 0.85;
+    scene.fog = mojado ? new THREE.FogExp2(0x5d6670, 0.0032) : new THREE.FogExp2(0xc9a982, 0.00045);
+    renderer.toneMappingExposure = mojado ? 0.55 : 0.7;
     if (luzSol) {
       luzSol.color.set(mojado ? 0xb8c4d6 : 0xffc58a);
-      luzSol.intensity = mojado ? 0.7 : 3.4;
+      luzSol.intensity = mojado ? 0.7 : 2.6;
       luzSol.userData.direccion = sol.clone().normalize();
     }
     agua.material.uniforms.sunDirection.value.copy(sol).normalize();

@@ -2,6 +2,7 @@
 // Las medidas son las del simulador: largo 4.0 m, ancho 1.8 m, entre ejes 2.5 m.
 
 import * as THREE from "three";
+import { registrar } from "./texturas.js";
 
 function texturaDecoracion() {
   const c = document.createElement("canvas");
@@ -276,7 +277,7 @@ export function crearCarro(medidas, { alCargar } = {}) {
   grupo.add(basico.grupo);
   basico.grupo.remove(basico.faro, basico.faro.target);
   grupo.add(basico.faro, basico.faro.target);
-  cargarModelo(medidas, basico.luzFreno, basico.faro)
+  registrar("carro 3D", cargarModelo(medidas, basico.luzFreno, basico.faro))
     .then(({ raiz, ruedas }) => {
       grupo.remove(basico.grupo);
       grupo.add(raiz);
@@ -286,57 +287,83 @@ export function crearCarro(medidas, { alCargar } = {}) {
   return { grupo, ruedas: basico.ruedas, luzFreno: basico.luzFreno, faro: basico.faro };
 }
 
-// ------------------------------------------------------------------ humo
+// ------------------------------------------------------------------ humo y rocío
+// Volutas de humo con textura de ruido que giran, crecen y se disipan. Con lluvia,
+// las llantas levantan rocío de agua (más claro, rápido y bajo).
 function texturaHumo() {
   const c = document.createElement("canvas");
-  c.width = c.height = 64;
+  c.width = c.height = 128;
   const g = c.getContext("2d");
-  const r = g.createRadialGradient(32, 32, 2, 32, 32, 32);
-  r.addColorStop(0, "rgba(255,255,255,0.9)"); r.addColorStop(0.5, "rgba(235,235,235,0.35)"); r.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  for (let k = 0; k < 26; k++) {           // varias bocanadas superpuestas = voluta irregular
+    const x = 64 + (Math.random() - 0.5) * 50, y = 64 + (Math.random() - 0.5) * 50, r = 14 + Math.random() * 26;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(255,255,255,${0.16 + Math.random() * 0.12})`);
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  }
+  const borde = g.createRadialGradient(64, 64, 30, 64, 64, 64);   // se apaga hacia el borde
+  borde.addColorStop(0, "rgba(0,0,0,0)"); borde.addColorStop(1, "rgba(0,0,0,1)");
+  g.globalCompositeOperation = "destination-out"; g.fillStyle = borde; g.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(c);
 }
 
-export function crearHumo(scene, N = 420) {
-  const pos = new Float32Array(N * 3), tam = new Float32Array(N), alfa = new Float32Array(N);
-  const vel = new Float32Array(N * 3), vida = new Float32Array(N);
+export function crearHumo(scene, N = 900) {
+  const pos = new Float32Array(N * 3), tam = new Float32Array(N), alfa = new Float32Array(N), giro = new Float32Array(N);
+  const vel = new Float32Array(N * 3), vida = new Float32Array(N), vgiro = new Float32Array(N);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geo.setAttribute("tam", new THREE.BufferAttribute(tam, 1));
   geo.setAttribute("alfa", new THREE.BufferAttribute(alfa, 1));
+  geo.setAttribute("giro", new THREE.BufferAttribute(giro, 1));
   const mat = new THREE.ShaderMaterial({
-    uniforms: { mapa: { value: texturaHumo() }, color: { value: new THREE.Color(0xe7e2dc) } },
-    vertexShader: `attribute float tam; attribute float alfa; varying float vA;
-      void main(){ vA = alfa; vec4 mv = modelViewMatrix * vec4(position,1.0);
-      gl_PointSize = tam * 320.0 / -mv.z; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `uniform sampler2D mapa; uniform vec3 color; varying float vA;
-      void main(){ vec4 t = texture2D(mapa, gl_PointCoord); gl_FragColor = vec4(color, t.a * vA); }`,
+    uniforms: { mapa: { value: texturaHumo() }, color: { value: new THREE.Color(0xd9d4cc) } },
+    vertexShader: `attribute float tam; attribute float alfa; attribute float giro; varying float vA; varying float vG;
+      void main(){ vA = alfa; vG = giro; vec4 mv = modelViewMatrix * vec4(position,1.0);
+      gl_PointSize = tam * 420.0 / -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D mapa; uniform vec3 color; varying float vA; varying float vG;
+      void main(){
+        vec2 p = gl_PointCoord - 0.5; float c = cos(vG), s = sin(vG);
+        vec4 t = texture2D(mapa, vec2(c * p.x - s * p.y, s * p.x + c * p.y) + 0.5);
+        // un poco más oscuro abajo, como el humo real iluminado desde arriba
+        gl_FragColor = vec4(color * (0.82 + 0.18 * (1.0 - gl_PointCoord.y)), t.a * vA);
+      }`,
     transparent: true, depthWrite: false,
   });
   const puntos = new THREE.Points(geo, mat);
   puntos.frustumCulled = false;
   scene.add(puntos);
-  let k = 0;
+  let k = 0, rocio = false;
 
   function emitir(p, intensidad) {
-    const n = Math.ceil(intensidad * 3);
+    const n = Math.ceil(intensidad * (rocio ? 4 : 3));
     for (let j = 0; j < n; j++) {
       const i = k++ % N;
-      pos[i * 3] = p.x + (Math.random() - 0.5) * 0.4; pos[i * 3 + 1] = 0.25; pos[i * 3 + 2] = p.z + (Math.random() - 0.5) * 0.4;
-      vel[i * 3] = (Math.random() - 0.5) * 1.2; vel[i * 3 + 1] = 0.6 + Math.random() * 0.8; vel[i * 3 + 2] = (Math.random() - 0.5) * 1.2;
-      vida[i] = 1; tam[i] = 0.6 + Math.random() * 0.4; alfa[i] = 0.35 * intensidad + 0.15;
+      pos[i * 3] = p.x + (Math.random() - 0.5) * 0.5; pos[i * 3 + 1] = 0.2; pos[i * 3 + 2] = p.z + (Math.random() - 0.5) * 0.5;
+      const sube = rocio ? 0.5 + Math.random() * 0.6 : 0.7 + Math.random() * 1.0;
+      vel[i * 3] = (Math.random() - 0.5) * 1.6; vel[i * 3 + 1] = sube; vel[i * 3 + 2] = (Math.random() - 0.5) * 1.6;
+      vida[i] = 1; tam[i] = rocio ? 0.35 + Math.random() * 0.3 : 0.6 + Math.random() * 0.5;
+      alfa[i] = (rocio ? 0.22 : 0.4) * intensidad + 0.12;
+      giro[i] = Math.random() * 6.28; vgiro[i] = (Math.random() - 0.5) * 1.5;
     }
   }
 
   function actualizar(dt) {
     for (let i = 0; i < N; i++) {
       if (vida[i] <= 0) { alfa[i] = 0; continue; }
-      vida[i] -= dt * 0.55;
+      vida[i] -= dt * (rocio ? 0.9 : 0.4);
+      vel[i * 3 + 1] *= 1 - dt * 0.6;                 // el humo frena al subir
       pos[i * 3] += vel[i * 3] * dt; pos[i * 3 + 1] += vel[i * 3 + 1] * dt; pos[i * 3 + 2] += vel[i * 3 + 2] * dt;
-      tam[i] += dt * 2.6;
-      alfa[i] = Math.max(0, alfa[i] - dt * 0.35);
+      tam[i] += dt * (rocio ? 1.6 : 2.4);
+      giro[i] += vgiro[i] * dt;
+      alfa[i] = Math.max(0, alfa[i] - dt * (rocio ? 0.45 : 0.22));
     }
-    geo.attributes.position.needsUpdate = geo.attributes.tam.needsUpdate = geo.attributes.alfa.needsUpdate = true;
+    for (const a of ["position", "tam", "alfa", "giro"]) geo.attributes[a].needsUpdate = true;
   }
-  return { emitir, actualizar, puntos };
+
+  // Con lluvia: rocío blanco azulado; en seco: humo de llanta gris claro
+  function clima(mojado) {
+    rocio = mojado;
+    mat.uniforms.color.value.set(mojado ? 0xdfe6ee : 0xd9d4cc);
+  }
+  return { emitir, actualizar, clima, puntos };
 }

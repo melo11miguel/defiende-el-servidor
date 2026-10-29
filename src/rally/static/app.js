@@ -10,7 +10,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { construirEscenario } from "./escenario.js";
 import { crearCarro, crearHumo } from "./carro.js";
-import { pbr } from "./texturas.js";
+import { pbr, cargas } from "./texturas.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 
 const $ = (id) => document.getElementById(id);
@@ -20,6 +20,14 @@ const lerpAng = (a, b, t) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const params = new URLSearchParams(location.search);
 
+// Si algo falla, se muestra en la pantalla de carga en vez de quedarse girando
+function mostrarError(msg) {
+  const t = document.getElementById("cargando-txt");
+  if (t) { t.textContent = "Error: " + msg; t.style.color = "#fb7185"; }
+}
+addEventListener("error", (e) => mostrarError(`${e.message} (${(e.filename || "").split("/").pop()}:${e.lineno})`));
+addEventListener("unhandledrejection", (e) => mostrarError(e.reason && (e.reason.stack || e.reason.message) || String(e.reason)));
+
 let pista, ep = null;
 const alcance = () => (ep ? ep.params.r_max : pista.rayos.alcance);
 let reproduciendo = true, velocidad = 1, tiempo = 0, camara = params.get("cam") || "persecucion";
@@ -27,7 +35,9 @@ let mu = parseFloat(params.get("mu") || "0.9");
 
 // ------------------------------------------------------------------ escena
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// ?calidad=baja: para computadores sin tarjeta gráfica (sombras livianas, sin MSAA ni bloom)
+const CALIDAD_BAJA = params.get("calidad") === "baja";
+renderer.setPixelRatio(CALIDAD_BAJA ? 1 : Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -42,10 +52,10 @@ cam.position.set(0, 60, 70);
 // Post-procesado: brillo suave (bloom) en faros, luces del túnel y sol
 // Render con antialiasing (MSAA x4) en el post-procesado
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight,
-  { samples: 4, type: THREE.HalfFloatType }));
+  { samples: CALIDAD_BAJA ? 0 : 4, type: THREE.HalfFloatType }));
 composer.addPass(new RenderPass(scene, cam));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.35, 0.6, 0.9);
-composer.addPass(bloom);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.16, 0.5, 0.95);
+if (!CALIDAD_BAJA) composer.addPass(bloom);
 composer.addPass(new OutputPass());
 // Gradación de color: un poco más de contraste y saturación + viñeta (como una cámara de TV)
 composer.addPass(new ShaderPass({
@@ -73,7 +83,7 @@ const sol = new THREE.DirectionalLight(0xfff1dc, 2.4);
 sol.name = "sol";
 sol.position.set(-60, 90, 40);
 sol.castShadow = true;
-sol.shadow.mapSize.set(4096, 4096);
+sol.shadow.mapSize.set(CALIDAD_BAJA ? 1024 : 4096, CALIDAD_BAJA ? 1024 : 4096);
 Object.assign(sol.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 10, far: 260 });
 sol.shadow.bias = -0.0004;
 sol.shadow.normalBias = 0.04;
@@ -386,9 +396,9 @@ function construirRayos() {
   for (let i = 0; i < pista.rayos.angulos.length; i++) {
     const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
     const linea = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9, toneMapped: false }));
-    const punta = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12),
+    const punta = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10),
       new THREE.MeshBasicMaterial({ color: 0x22d3ee, toneMapped: false }));
-    const anillo = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.62, 24),
+    const anillo = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.24, 24),
       new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.7, side: THREE.DoubleSide, toneMapped: false }));
     anillo.rotation.x = -Math.PI / 2;
     scene.add(linea, punta, anillo);
@@ -472,7 +482,7 @@ function construirLluvia() {
 function aplicarClima() {
   const mojado = mu < 0.75;
   escenario.aplicarClima(mojado);
-  hemi.intensity = mojado ? 0.35 : 0.55;
+  hemi.intensity = mojado ? 0.25 : 0.3;
   hemi.color.set(mojado ? 0x9fb0c8 : 0xffd9a8);
   // Asfalto mojado: más oscuro y casi espejo (refleja el cielo y las luces)
   matAsfalto.roughness = mojado ? 0.18 : 1.0;
@@ -480,6 +490,7 @@ function aplicarClima() {
   matAsfalto.color.set(mojado ? 0x6d727c : 0xffffff);
   matEscape.color.set(mojado ? 0x8a9a86 : 0xffffff);
   lluvia.visible = mojado;
+  if (humo) humo.clima(mojado);
   faro.intensity = mojado ? 60 : 0;
   document.querySelectorAll("#sel-piso button").forEach((b) => b.classList.toggle("activo", parseFloat(b.dataset.mu) === mu));
   $("r-cambiar").textContent = mojado ? "☀ Probar en seco" : "☂ Probar con lluvia";
@@ -893,7 +904,8 @@ function animar() {
 
   // Humo de llantas: al derrapar, al pisar la zona de escape o al arrancar fuerte
   if (reproduciendo && humo) {
-    const fuerte = est.b.derrape ? 1 : est.b.fuera > 0 ? 0.8 : est.accion[0] > 0.8 && est.v < 7 ? 0.35 : 0;
+    let fuerte = est.b.derrape ? 1 : est.b.fuera > 0 ? 0.8 : est.accion[0] > 0.8 && est.v < 7 ? 0.35 : 0;
+    if (mu < 0.75 && est.v > 6) fuerte = Math.max(fuerte, (est.v / 25) * 0.55);   // rocío de agua con lluvia
     if (fuerte > 0) {
       const back = -pista.carro.ejes / 2, W = pista.carro.ancho / 2;
       for (const lado of [W, -W]) {
@@ -1116,6 +1128,19 @@ function conectar() {
   const paneles = () => document.body.classList.toggle("limpio");
   $("btn-paneles").onclick = paneles;
   if (params.get("limpio") === "1") document.body.classList.add("limpio");
+  // Indicador de carga de los recursos pesados (cielo, carro, texturas, faroles)
+  const indicador = document.createElement("div");
+  indicador.id = "cargas";
+  document.body.appendChild(indicador);
+  const pintarCargas = () => {
+    const lista = [...cargas.entries()];
+    const ok = lista.filter(([, e]) => e === "ok").length, mal = lista.filter(([, e]) => e === "error");
+    if (lista.length && ok === lista.length) { indicador.remove(); clearInterval(timerCargas); return; }
+    indicador.innerHTML = `Cargando escenario ${ok}/${lista.length}` +
+      lista.filter(([, e]) => e !== "ok").map(([n, e]) => `<div class="${e}">${e === "error" ? "✖" : "…"} ${n}</div>`).join("");
+    if (mal.length && ok + mal.length === lista.length) clearInterval(timerCargas);
+  };
+  const timerCargas = setInterval(pintarCargas, 500);
   if (params.get("tab") === "exp") setTimeout(() => document.querySelector('.pestanas button[data-tab="exp"]').click(), 0);
   document.querySelectorAll("#sel-vel button").forEach((b) => (b.onclick = () => {
     velocidad = parseFloat(b.dataset.v);

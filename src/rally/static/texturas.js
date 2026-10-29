@@ -6,6 +6,14 @@ import * as THREE from "three";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 
 const PH = "https://dl.polyhaven.org/file/ph-assets";
+
+// Registro de descargas pesadas (para el indicador de carga del visor)
+export const cargas = new Map();   // nombre -> "cargando" | "ok" | "error"
+export function registrar(nombre, promesa) {
+  cargas.set(nombre, "cargando");
+  promesa.then(() => cargas.set(nombre, "ok"), (e) => { cargas.set(nombre, "error"); console.warn("Falló la carga:", nombre, e); });
+  return promesa;
+}
 const cargador = new THREE.TextureLoader();
 cargador.setCrossOrigin("anonymous");
 const cache = new Map();
@@ -28,7 +36,7 @@ export function pbr(material, nombre, { repetir = [1, 1], relieve = 1, rugosidad
   const url = (mapa) => `${PH}/Textures/jpg/${res}/${nombre}/${nombre}_${mapa}_${res}.jpg`;
   const pedidos = [cargar(url("diff"), true), cargar(url("nor_gl"), false)];
   if (rugosidad) pedidos.push(cargar(url("rough"), false));
-  return Promise.all(pedidos).then(([diff, nor, rough]) => {
+  return registrar("textura " + nombre, Promise.all(pedidos)).then(([diff, nor, rough]) => {
     for (const t of [diff, nor, rough]) if (t) { t.repeat.set(...repetir); }
     // Cada material usa su propia copia (para repetir distinto sin afectar a otros)
     material.map = diff.clone(); material.map.repeat.set(...repetir); material.map.needsUpdate = true;
@@ -44,7 +52,7 @@ export function pbr(material, nombre, { repetir = [1, 1], relieve = 1, rugosidad
 // Cielo HDR "puresky" (sin suelo). Devuelve la textura y la dirección del sol,
 // que se estima buscando el píxel más brillante de la imagen.
 export async function cielo(nombre, res = "2k") {
-  const tex = await new RGBELoader().loadAsync(`${PH}/HDRIs/hdr/${res}/${nombre}_${res}.hdr`);
+  const tex = await registrar("cielo " + nombre, new RGBELoader().loadAsync(`${PH}/HDRIs/hdr/${res}/${nombre}_${res}.hdr`));
   tex.mapping = THREE.EquirectangularReflectionMapping;
   const { width: w, height: h, data } = tex.image;
   const leer = data instanceof Uint16Array ? THREE.DataUtils.fromHalfFloat : (v) => v;
