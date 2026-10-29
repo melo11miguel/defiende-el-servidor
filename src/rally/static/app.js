@@ -10,6 +10,8 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { construirEscenario } from "./escenario.js";
 import { crearCarro, crearHumo } from "./carro.js";
+import { pbr } from "./texturas.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 
 const $ = (id) => document.getElementById(id);
 const P = (x, y, h = 0) => new THREE.Vector3(x, h, -y);
@@ -38,11 +40,28 @@ const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 4000);
 cam.position.set(0, 60, 70);
 // Post-procesado: brillo suave (bloom) en faros, luces del túnel y sol
-const composer = new EffectComposer(renderer);
+// Render con antialiasing (MSAA x4) en el post-procesado
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight,
+  { samples: 4, type: THREE.HalfFloatType }));
 composer.addPass(new RenderPass(scene, cam));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.35, 0.6, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+// Gradación de color: un poco más de contraste y saturación + viñeta (como una cámara de TV)
+composer.addPass(new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, contraste: { value: 1.06 }, saturacion: { value: 1.12 }, vineta: { value: 0.32 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float contraste, saturacion, vineta; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb = mix(vec3(l), c.rgb, saturacion);
+      c.rgb = (c.rgb - 0.5) * contraste + 0.5;
+      float d = distance(vUv, vec2(0.5));
+      c.rgb *= 1.0 - vineta * smoothstep(0.35, 0.85, d);
+      gl_FragColor = c;
+    }`,
+}));
 const controles = new OrbitControls(cam, renderer.domElement);
 controles.enableDamping = true;
 controles.maxPolarAngle = Math.PI * 0.48;
@@ -140,8 +159,51 @@ function texturaCuadros(nx = 12, ny = 2) {
   return t;
 }
 
+// Vallas publicitarias del muro: 8 tableros de 6 m (u = s / 48 m)
+function texturaVallas() {
+  const marcas = [["AUTONOMOUS RALLY", "#0b1d5c", "#ffd23f"], ["MLflow", "#f8fafc", "#0194e2"], ["DVC", "#13adc7", "#ffffff"],
+    ["PPO · RED NEURONAL", "#111827", "#f97316"], ["Gymnasium", "#7c3aed", "#ffffff"], ["three.js", "#000000", "#ffffff"],
+    ["Hugging Face", "#ffd21e", "#111827"], ["DagsHub", "#16a34a", "#ffffff"]];
+  const c = document.createElement("canvas");
+  c.width = 4096; c.height = 128;
+  const g = c.getContext("2d");
+  marcas.forEach(([txt, fondo, letra], i) => {
+    const x = i * 512;
+    g.fillStyle = fondo; g.fillRect(x, 0, 512, 128);
+    g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(x, 0, 512, 10);
+    g.fillStyle = letra; g.font = "italic 900 64px Inter, Arial"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.save(); g.translate(x + 256, 68); g.scale(0.62, 1); g.fillText(txt, 0, 0); g.restore();
+    g.fillStyle = "rgba(0,0,0,0.25)"; g.fillRect(x + 509, 0, 3, 128);
+  });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+
+// Malla metálica de seguridad (alambre en rombos, con transparencia)
+function texturaMalla() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d");
+  g.strokeStyle = "#d1d5db"; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+
 // ------------------------------------------------------------------ pista
+// Texturas fotográficas (Poly Haven, CC0): asfalto de circuito y pasto en el escape
 const matAsfalto = new THREE.MeshStandardMaterial({ map: texturaAsfalto(), roughness: 0.9, metalness: 0.0 });
+pbr(matAsfalto, "asphalt_track", { repetir: [2, 1], relieve: 0.6 });
+const matEscape = new THREE.MeshStandardMaterial({ color: 0x4f7a34, roughness: 1 });
+pbr(matEscape, "leafy_grass", { repetir: [1, 1] });
+const matVallas = new THREE.MeshStandardMaterial({ map: texturaVallas(), roughness: 0.45 });
+const matArmco = new THREE.MeshStandardMaterial({ color: 0xc3c8cf, metalness: 0.85, roughness: 0.3 });
+const matMalla = new THREE.MeshStandardMaterial({ map: texturaMalla(), alphaTest: 0.4, side: THREE.DoubleSide, color: 0xb9bec6, metalness: 0.6, roughness: 0.4 });
 const puertas = [];
 
 // Cinta a lo largo de la línea central entre dos desvíos laterales (+ = izquierda)
@@ -171,20 +233,23 @@ function cinta(offA, offB, altura, colorPorS = null) {
   return geo;
 }
 
-// Pared vertical a lo largo de la pista, a `off` metros del centro, entre dos alturas
-function pared(off, h0, h1, colorPorS) {
-  const c = pista.centro, n = c.length, pos = [], col = [];
+// Pared vertical a lo largo de la pista, a `off` metros del centro, entre dos alturas.
+// uv: u = s / largoU (a lo largo), v = 0..altoV (de abajo a arriba)
+function pared(off, h0, h1, colorPorS, largoU = 48, altoV = 1) {
+  const c = pista.centro, n = c.length, pos = [], col = [], uv = [];
   const k = new THREE.Color();
   for (let i = 0; i < n; i++) {
-    const [s, x, y, h] = c[i], [, x2, y2, h2] = c[(i + 1) % n];
+    const [s, x, y, h] = c[i], [s2, x2, y2, h2] = c[(i + 1) % n];
+    const sb = s2 < s ? pista.largo : s2;
     const a = P(x - Math.sin(h) * off, y + Math.cos(h) * off), b = P(x2 - Math.sin(h2) * off, y2 + Math.cos(h2) * off);
-    const q = [[a, h0], [b, h0], [a, h1], [a, h1], [b, h0], [b, h1]];
+    const q = [[a, h0, s, 0], [b, h0, sb, 0], [a, h1, s, 1], [a, h1, s, 1], [b, h0, sb, 0], [b, h1, sb, 1]];
     k.set(colorPorS(s));
-    for (const [p, hh] of q) { pos.push(p.x, hh, p.z); col.push(k.r, k.g, k.b); }
+    for (const [p, hh, ss, vv] of q) { pos.push(p.x, hh, p.z); col.push(k.r, k.g, k.b); uv.push(ss / largoU, vv * altoV); }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   geo.computeVertexNormals();
   return geo;
 }
@@ -215,24 +280,37 @@ function construirPista(w) {
   grupoPista.add(new THREE.Mesh(cinta(-0.12, 0.12, 0.03, (s) => (Math.floor(s / 3) % 2 ? 0x3a3d43 : 0xe5e5e5)),
     new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 })));
 
-  // Zona de escape (verde) y muros a ambos lados, igual que en el simulador
+  // Zona de escape (pasto) y muros a ambos lados, igual que en el simulador
   const borde = w / 2 + pista.escape;
-  const matEscape = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
-  const colorEscape = (s) => (Math.floor(s / 6) % 2 ? 0x4f8a34 : 0x5b9a3c);
   for (const [a, b] of [[-borde, -w / 2 - 0.4], [w / 2 + 0.4, borde]]) {
-    const m = new THREE.Mesh(cinta(a, b, 0.012, colorEscape), matEscape);
+    const m = new THREE.Mesh(cinta(a, b, 0.012), matEscape);
     m.receiveShadow = true;
     grupoPista.add(m);
   }
-  const matMuro = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, side: THREE.DoubleSide });
-  const colorMuro = (s) => [0xf5f5f5, 0xdc2626, 0xf5f5f5, 0x1d4ed8][Math.floor(s / 12) % 4];
-  for (const off of [-borde - 0.15, borde + 0.15]) {
-    const muro = new THREE.Mesh(pared(off, 0, 1.1, colorMuro), matMuro);
-    muro.castShadow = muro.receiveShadow = true;
-    grupoPista.add(muro);
-    const riel = new THREE.Mesh(pared(off, 1.1, 1.3, () => 0x9ca3af), matMuro);
-    grupoPista.add(riel);
+  // Muro: vallas publicitarias + baranda Armco metálica + malla de seguridad con postes
+  const blanco = () => 0xffffff;
+  for (const lado of [-1, 1]) {
+    const off = lado * (borde + 0.15);
+    for (const [geo, mat, sombra] of [
+      [pared(off, 0, 1.0, blanco), matVallas, true],
+      [pared(off, 1.0, 1.32, blanco, 4), matArmco, true],
+      [pared(off + lado * 0.12, 1.32, 4.2, blanco, 0.45, 6.4), matMalla, false],
+    ]) {
+      const muro = new THREE.Mesh(geo, mat);
+      muro.castShadow = sombra;
+      muro.receiveShadow = true;
+      grupoPista.add(muro);
+    }
   }
+  const lugaresPoste = [];
+  for (let k = 0; k < pista.centro.length; k += 8) {
+    const [, x, y, h] = pista.centro[k];
+    for (const lado of [-1, 1]) lugaresPoste.push(P(x - Math.sin(h) * lado * (borde + 0.27), y + Math.cos(h) * lado * (borde + 0.27), 2.6));
+  }
+  const postes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 3.2, 6), matArmco, lugaresPoste.length);
+  lugaresPoste.forEach((p, i) => postes.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
+  postes.castShadow = true;
+  grupoPista.add(postes);
 
   // Puertas: checkpoints y meta
   for (const pu of pista.puertas) {
@@ -396,9 +474,11 @@ function aplicarClima() {
   escenario.aplicarClima(mojado);
   hemi.intensity = mojado ? 0.35 : 0.55;
   hemi.color.set(mojado ? 0x9fb0c8 : 0xffd9a8);
-  matAsfalto.roughness = mojado ? 0.32 : 0.9;
-  matAsfalto.metalness = mojado ? 0.08 : 0.0;
-  matAsfalto.color.set(mojado ? 0xb4bcc9 : 0xffffff);
+  // Asfalto mojado: más oscuro y casi espejo (refleja el cielo y las luces)
+  matAsfalto.roughness = mojado ? 0.18 : 1.0;
+  matAsfalto.metalness = mojado ? 0.15 : 0.0;
+  matAsfalto.color.set(mojado ? 0x6d727c : 0xffffff);
+  matEscape.color.set(mojado ? 0x8a9a86 : 0xffffff);
   lluvia.visible = mojado;
   faro.intensity = mojado ? 60 : 0;
   document.querySelectorAll("#sel-piso button").forEach((b) => b.classList.toggle("activo", parseFloat(b.dataset.mu) === mu));
@@ -870,6 +950,16 @@ function animar() {
     lluvia.position.set(cam.position.x * 0.6, 0, cam.position.z * 0.6);
   }
 
+  // Sombras nítidas: la cámara de sombras del sol sigue al carro (cuadro de 120 m)
+  {
+    const dir = sol.userData.direccion;
+    if (dir) {
+      const centro = P(est.x, est.y);
+      sol.position.copy(centro).addScaledVector(dir, 200);
+      sol.target.position.copy(centro);
+      sol.target.updateMatrixWorld();
+    }
+  }
   actualizarCamara(est, dt);
   actualizarHUD(est);
   composer.render();
@@ -1066,9 +1156,11 @@ function conectar() {
 pista = await (await fetch("/api/pista")).json();
 {
   const [MX, MY] = pista.mapa;
-  Object.assign(sol.shadow.camera, { left: -MX, right: MX, top: MY, bottom: -MY, far: 600 });
-  sol.position.set(-MX * 0.6, 160, MY * 0.5);
+  // Cámara de sombras de 120 m que sigue al carro (más detalle que cubrir todo el mapa)
+  Object.assign(sol.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 450 });
   sol.shadow.camera.updateProjectionMatrix();
+  scene.add(sol.target);
+  void MX; void MY;
 }
 prepararCamsTV();
 construirMundo();
