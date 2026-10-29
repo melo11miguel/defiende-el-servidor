@@ -1,8 +1,11 @@
 """Acciones discretas y discretización del estado (para Q-learning con tabla).
 
 Q-learning con tabla necesita un número finito de estados y de acciones:
-- Acciones: 3 de pedal × 5 de dirección = 15.
-- Estado: se agrupan en rangos (bins) las 5 observaciones que más importan.
+- Acciones: 6 de pedal × 9 de dirección = 54. Hacen falta niveles suaves (soltar el
+  pedal, girar poquito): con solo "frenar / 30 % / a fondo" no se puede mantener la
+  velocidad con lluvia y el carro llega pasado a las curvas.
+- Estado: se agrupan en rangos (bins) las observaciones que más importan, incluida
+  la señal de lluvia (sin ella la tabla no puede manejar distinto cuando llueve).
 """
 
 import itertools
@@ -10,17 +13,21 @@ import itertools
 import gymnasium as gym
 import numpy as np
 
-PEDAL = (-1.0, 0.3, 1.0)  # frenar, mantener, acelerar
-DIRECCION = (-1.0, -0.4, 0.0, 0.4, 1.0)  # derecha fuerte ... izquierda fuerte
+PEDAL = (-1.0, -0.4, 0.0, 0.25, 0.6, 1.0)  # frenar fuerte ... acelerar a fondo
+DIRECCION = (-1.0, -0.6, -0.3, -0.1, 0.0, 0.1, 0.3, 0.6, 1.0)  # derecha fuerte ... izquierda fuerte
 ACCIONES = np.array(list(itertools.product(PEDAL, DIRECCION)), dtype=np.float32)
+# Para estados nunca vistos: pedal suave y volante recto (no "frenar y girar a fondo")
+NEUTRA = int(np.argmin(np.abs(ACCIONES - np.array([0.25, 0.0])).sum(1)))
 
 # (índice en la observación, bordes de los rangos)
 BINS = [
-    (4, (-0.6, -0.2, 0.2, 0.6)),  # desvío del centro: 5 rangos
-    (5, (-0.08, -0.025, 0.025, 0.08)),  # error de rumbo: 5 rangos
-    (0, (0.25, 0.4, 0.55)),  # velocidad: 4 rangos
+    (4, (-0.6, -0.3, -0.1, 0.1, 0.3, 0.6)),  # desvío del centro: 7 rangos
+    (5, (-0.08, -0.04, -0.015, 0.015, 0.04, 0.08)),  # error de rumbo: 7 rangos
+    (0, (0.2, 0.3, 0.4, 0.5, 0.6, 0.72, 0.85)),  # velocidad: 8 rangos
     (14, (-0.4, -0.12, 0.12, 0.4)),  # curvatura a 25 m: 5 rangos
-    (13, (-0.12, 0.12)),  # curvatura a 10 m: 3 rangos
+    (13, (-0.4, -0.12, 0.12, 0.4)),  # curvatura a 10 m: 5 rangos
+    (15, (-0.4, -0.12, 0.12, 0.4)),  # curvatura a 50 m: 5 rangos
+    (19, (0.5,)),  # lluvia: 2 rangos
 ]
 FORMA = tuple(len(b) + 1 for _, b in BINS)
 N_ESTADOS = int(np.prod(FORMA))
@@ -32,8 +39,13 @@ def estado(obs):
     return int(np.ravel_multi_index(idx, FORMA))
 
 
+def discreta(accion):
+    """La acción discreta más parecida a una acción continua (para imitar al maestro)."""
+    return int(np.argmin(((ACCIONES - np.asarray(accion)) ** 2).sum(1)))
+
+
 class AccionesDiscretas(gym.ActionWrapper):
-    """Expone las 15 acciones discretas sobre el ambiente continuo."""
+    """Expone las acciones discretas sobre el ambiente continuo."""
 
     def __init__(self, env):
         super().__init__(env)
