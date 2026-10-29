@@ -98,9 +98,10 @@ accion, _ = model.predict(obs, deterministic=True)
 def _verificar_dvc():
     """No publica si el modelo o las métricas no corresponden al último `dvc repro`."""
     import subprocess
+    import sys
 
     try:
-        salida = subprocess.check_output(["dvc", "status", "ppo", "evaluar"], text=True,
+        salida = subprocess.check_output([sys.executable, "-m", "dvc", "status", "ppo", "evaluar"], text=True,
                                          stderr=subprocess.STDOUT)
     except (OSError, subprocess.CalledProcessError) as e:
         raise SystemExit(f"No se pudo verificar con DVC: {e}")

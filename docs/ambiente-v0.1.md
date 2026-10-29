@@ -209,6 +209,18 @@ modelo nunca se evalúa en los mismos arranques con los que entrenó.
 | PPO (red neuronal) | 100 % | 77.6 s | 0 % | 57.6 % |
 | Q-learning (tabla) | 0 % | — | 0 % | 11.9 % |
 
+**Resultados del modelo v2** (`modelo-v2`, ambiente 0.2 con sensor de agarre, 3 millones de pasos):
+
+| Piloto | Seco: vueltas | Seco: tiempo | Mojado: vueltas | Mojado: avance |
+|---|---|---|---|---|
+| PPO (red neuronal) | 100 % | **63.1 s** (−18.5 %) | 0 % | 11.6 % |
+| Q-learning (tabla) | 0 % (21.7 % de avance) | — | 0 % | 11.7 % |
+
+Lectura: en seco la v2 es mucho más rápida que la v1 y que el piloto experto. Con lluvia empeoró:
+el modelo aprendió a ir más agresivo y el sensor de agarre no bastó para que frene antes. El
+protocolo de la ficha no acepta la v2 (no mejora en mojado). Próximo experimento sugerido: entrenar
+con más episodios de lluvia (rango de μ sesgado a 0.5) o penalizar más los choques.
+
 | # | Métrica | Definición |
 |---|---|---|
 | 1 | **Tasa de vueltas completas** | % de episodios que terminan en éxito |
