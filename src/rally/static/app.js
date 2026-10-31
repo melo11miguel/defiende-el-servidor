@@ -521,7 +521,7 @@ function aplicarClima() {
   if (humo) humo.clima(mojado);
   faro.intensity = mojado ? 60 : 0;
   document.querySelectorAll("#sel-piso button").forEach((b) => b.classList.toggle("activo", parseFloat(b.dataset.mu) === mu));
-  $("r-cambiar").textContent = mojado ? "☀ Probar en seco" : "☂ Probar con lluvia";
+  $("r-cambiar").textContent = mojado ? "Probar en seco" : "Probar con lluvia";
 }
 
 // ------------------------------------------------------------------ cámaras
@@ -645,8 +645,8 @@ function actualizarHUD(est) {
   $("aguja").style.transform = `rotate(${-135 + fv * 270}deg)`;
 
   const [acel, dir] = est.accion;
-  $("i-acel").style.height = `${Math.max(0, acel) * 100}%`;
-  $("i-freno").style.height = `${Math.max(0, -acel) * 100}%`;
+  $("i-acel").style.width = `${Math.max(0, acel) * 100}%`;
+  $("i-freno").style.width = `${Math.max(0, -acel) * 100}%`;
   const grados = dir * pista.delta_max * 180 / Math.PI;
   $("volante").style.transform = `rotate(${-dir * 160}deg)`;
   $("i-dir").textContent = `${grados > 0.5 ? "◀ " : grados < -0.5 ? "" : ""}${Math.abs(grados).toFixed(0)}°${grados < -0.5 ? " ▶" : ""}`;
@@ -654,13 +654,13 @@ function actualizarHUD(est) {
   const ag = clamp(est.agarre, 0, 1);
   const arco = $("i-agarre-arco");
   arco.style.strokeDashoffset = `${251.3 * (1 - ag)}`;
-  arco.style.stroke = b.derrape ? "#f43f5e" : ag > 0.8 ? "#facc15" : "#4ade80";
+  arco.style.stroke = b.derrape ? "#e10600" : ag > 0.8 ? "#ffd23f" : "#2ee59d";
   $("i-agarre").textContent = b.derrape ? "MAX" : `${(ag * 100).toFixed(0)}%`;
 
   $("t-total").textContent = `${b.R >= 0 ? "+" : ""}${b.R.toFixed(1)}`;
-  $("t-total").style.color = b.R >= 0 ? "#4ade80" : "#fb7185";
+  $("t-total").style.color = b.R >= 0 ? "#2ee59d" : "#ff4d45";
   $("t-paso").textContent = `${b.r >= 0 ? "+" : ""}${b.r.toFixed(2)}`;
-  $("t-paso").style.color = b.r >= 0 ? "#86efac" : "#fda4af";
+  $("t-paso").style.color = b.r >= 0 ? "#2ee59d" : "#ff4d45";
 
   document.querySelectorAll("#cps span").forEach((el) => {
     const id = +el.dataset.id;
@@ -676,15 +676,15 @@ function actualizarHUD(est) {
 
   // Estado y avisos
   const st = $("estado");
-  if (b.fin === "exito") { st.textContent = "🏁 VUELTA COMPLETA"; st.className = "pastilla exito"; }
-  else if (b.fin) { st.textContent = { choque: "💥 CHOQUE", salida: "✖ FUERA DE PISTA", estancado: "⏸ ESTANCADO", tiempo: "⏱ SIN TIEMPO" }[b.fin]; st.className = "pastilla mal"; }
-  else if (b.fuera > 0) { st.textContent = `⚠ CÉSPED ${b.fuera.toFixed(1)}/1.0 s`; st.className = "pastilla alerta"; }
-  else if (b.derrape) { st.textContent = "⚠ DERRAPE"; st.className = "pastilla alerta"; }
-  else { st.textContent = "● EN PISTA"; st.className = "pastilla ok"; }
+  if (b.fin === "exito") { st.textContent = "VUELTA COMPLETA"; st.className = "pastilla exito"; }
+  else if (b.fin) { st.textContent = { choque: "CHOQUE", salida: "FUERA DE PISTA", estancado: "ESTANCADO", tiempo: "SIN TIEMPO" }[b.fin]; st.className = "pastilla mal"; }
+  else if (b.fuera > 0) { st.textContent = `CÉSPED ${b.fuera.toFixed(1)}/1.0 s`; st.className = "pastilla alerta"; }
+  else if (b.derrape) { st.textContent = "DERRAPE"; st.className = "pastilla alerta"; }
+  else { st.textContent = "EN PISTA"; st.className = "pastilla ok"; }
 
   if (b.cp !== ultimoCP && b.cp > ultimoCP && b.cp <= 4) aviso(`✔ ${pista.puertas[b.cp - 2].nombre}  +10`, "cp", 1300);
   ultimoCP = b.cp;
-  if (b.fuera > 0 && !b.fin) aviso("⚠ EN EL CÉSPED", "cesped");
+  if (b.fuera > 0 && !b.fin) aviso("EN EL CÉSPED", "cesped");
   else if (b.derrape && !b.fin) aviso("DERRAPE · SUBVIRAJE", "derrape");
   else aviso("", "");
 
@@ -696,9 +696,21 @@ function actualizarHUD(est) {
   dibujarMinimapa(est);
 }
 
+// Lienzos del HUD a doble resolución (nítidos en pantallas con escala); W y H siguen en
+// píxeles lógicos para que el dibujo no cambie.
+function lienzo2D(cv) {
+  if (!cv.dataset.w) {
+    cv.dataset.w = cv.width; cv.dataset.h = cv.height;
+    cv.width *= 2; cv.height *= 2;
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(2, 0, 0, 2, 0, 0);
+  return [cv, g, +cv.dataset.w, +cv.dataset.h];
+}
+
 // Radar: los 7 rayos tal como los observa el agente
 function dibujarRadar(b) {
-  const cv = $("radar"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
+  const [, g, W, H] = lienzo2D($("radar"));
   g.clearRect(0, 0, W, H);
   const cx = W / 2, cy = H - 18, R = H - 30, alc = alcance();
   g.strokeStyle = "rgba(148,163,184,.15)";
@@ -718,11 +730,11 @@ function dibujarRadar(b) {
     g.fillStyle = "#94a3b8"; g.font = "600 10px JetBrains Mono, monospace"; g.textAlign = "center";
     g.fillText(d >= alc - 0.01 ? "—" : d.toFixed(1), cx + Math.cos(a) * (R + 10) * 0.98, cy + Math.sin(a) * (R + 10) * 0.98 + 3);
   });
-  g.fillStyle = "#f97316"; g.beginPath(); g.roundRect(cx - 6, cy - 9, 12, 20, 3); g.fill();
+  g.fillStyle = "#e10600"; g.beginPath(); g.roundRect(cx - 6, cy - 9, 12, 20, 3); g.fill();
 }
 
 function dibujarGrafica(i) {
-  const cv = $("grafica"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
+  const [, g, W, H] = lienzo2D($("grafica"));
   g.clearRect(0, 0, W, H);
   const f = ep.frames, n = f.length;
   let lo = 0, hi = 0;
@@ -734,7 +746,7 @@ function dibujarGrafica(i) {
   g.strokeStyle = "rgba(148,163,184,.3)"; g.lineWidth = 1.5;
   g.beginPath(); f.forEach((fr, k) => (k ? g.lineTo(x(k), y(fr.R)) : g.moveTo(x(k), y(fr.R)))); g.stroke();
   const grad = g.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0, "#22d3ee"); grad.addColorStop(1, "#a78bfa");
+  grad.addColorStop(0, "#e10600"); grad.addColorStop(1, "#ffd23f");
   g.strokeStyle = grad; g.lineWidth = 2.5;
   g.beginPath(); for (let k = 0; k <= i; k++) (k ? g.lineTo(x(k), y(f[k].R)) : g.moveTo(x(k), y(f[k].R))); g.stroke();
   g.fillStyle = "#fff"; g.beginPath(); g.arc(x(i), y(f[i].R), 3.5, 0, 7); g.fill();
@@ -742,38 +754,36 @@ function dibujarGrafica(i) {
 
 
 function dibujarMinimapa(est) {
-  const cv = $("minimapa"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
+  const [, g, W, H] = lienzo2D($("minimapa"));
   const [MX, MY] = pista.mapa, k = Math.min(W / (2 * MX), H / (2 * MY));
   const X = (x) => W / 2 + x * k, Y = (y) => H / 2 - y * k;
   if (!fondoMini) {
-    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const c = document.createElement("canvas"); c.width = W * 2; c.height = H * 2;
     const b = c.getContext("2d");
-    b.fillStyle = "#1f3b1b"; b.beginPath(); b.roundRect(0, 0, W, H, 10); b.fill();
+    b.scale(2, 2);
     b.lineJoin = "round";
     const camino = () => { b.beginPath(); pista.centro.forEach(([, x, y], i) => (i ? b.lineTo(X(x), Y(y)) : b.moveTo(X(x), Y(y)))); b.closePath(); };
-    b.strokeStyle = "#dc2626"; b.lineWidth = (anchoConstruido + 1) * k; camino(); b.stroke();
-    b.strokeStyle = "#3a3d43"; b.lineWidth = anchoConstruido * k; camino(); b.stroke();
-    b.fillStyle = "#a8a29e";
-    for (const [x, y, lx, ly] of pista.bloques) b.fillRect(X(x - lx / 2), Y(y + ly / 2), lx * k, ly * k);
+    b.strokeStyle = "#000"; b.lineWidth = 7; camino(); b.stroke();
+    b.strokeStyle = "#e8eaee"; b.lineWidth = 3.5; camino(); b.stroke();
     fondoMini = c;
   }
   g.clearRect(0, 0, W, H);
-  g.drawImage(fondoMini, 0, 0);
+  g.drawImage(fondoMini, 0, 0, W, H);
   pista.puertas.forEach((p) => {
     const id = p.id, cp = est.b.cp;
-    g.strokeStyle = id < cp ? "#4ade80" : id === cp ? "#facc15" : "#38bdf8";
-    g.lineWidth = id === cp ? 4 : 3;
-    const nx = -Math.sin(p.h) * anchoConstruido / 2, ny = Math.cos(p.h) * anchoConstruido / 2;
+    g.strokeStyle = id < cp ? "#2ee59d" : id === cp ? "#ffd23f" : "#6d7686";
+    g.lineWidth = id === cp ? 5 : 4;
+    const nx = -Math.sin(p.h) * 6 / k, ny = Math.cos(p.h) * 6 / k;
     g.beginPath(); g.moveTo(X(p.x + nx), Y(p.y + ny)); g.lineTo(X(p.x - nx), Y(p.y - ny)); g.stroke();
   });
-  g.strokeStyle = "#c084fc"; g.lineWidth = 2;
+  g.strokeStyle = "#e10600"; g.lineWidth = 3;
   g.beginPath();
   for (let i = 0; i <= est.i; i++) { const f = ep.frames[i]; i ? g.lineTo(X(f.x), Y(f.y)) : g.moveTo(X(f.x), Y(f.y)); }
   g.stroke();
   g.save();
   g.translate(X(est.x), Y(est.y)); g.rotate(-est.psi);
-  g.fillStyle = "#f97316"; g.shadowColor = "#f97316"; g.shadowBlur = 10;
-  g.beginPath(); g.moveTo(7, 0); g.lineTo(-5, 4.5); g.lineTo(-3, 0); g.lineTo(-5, -4.5); g.closePath(); g.fill();
+  g.fillStyle = "#ffd23f"; g.strokeStyle = "#000"; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 5.5); g.lineTo(-3, 0); g.lineTo(-6, -5.5); g.closePath(); g.stroke(); g.fill();
   g.restore();
 }
 
@@ -816,7 +826,7 @@ function sortear() {
 
 // Registro de experimentos de la sesión (se guardan los episodios para repetirlos)
 const experimentos = [];
-const NOMBRE_FIN = { exito: "🏁 Vuelta completa", choque: "💥 Choque", salida: "🌀 Salida de pista", estancado: "⏸ Estancado", tiempo: "⏱ Sin tiempo" };
+const NOMBRE_FIN = { exito: "Vuelta completa", choque: "Choque", salida: "Salida de pista", estancado: "Estancado", tiempo: "Sin tiempo" };
 function pintarExperimentos() {
   $("n-exp").textContent = experimentos.length;
   if (!experimentos.length) return;
@@ -888,12 +898,12 @@ function mostrarEpisodio(nuevo) {
 
 function mostrarResultado() {
   const ok = ep.resultado === "exito", last = ep.frames[ep.frames.length - 1];
-  $("r-icono").textContent = { exito: "🏁", choque: "💥", salida: "🌀", estancado: "⏸", tiempo: "⏱" }[ep.resultado];
+  $("resultado").dataset.fin = ok ? "ok" : "mal";
   $("r-titulo").textContent = { exito: "VUELTA COMPLETA", choque: "CHOQUE", salida: "SALIDA DE PISTA", estancado: "ESTANCADO", tiempo: "TIEMPO AGOTADO" }[ep.resultado];
-  $("r-titulo").style.color = ok ? "#4ade80" : "#fb7185";
+  $("r-titulo").style.color = ok ? "#fff" : "#ff4d45";
   $("r-tiempo").textContent = `${ep.tiempo.toFixed(1)} s`;
   $("r-recompensa").textContent = `${ep.recompensa >= 0 ? "+" : ""}${ep.recompensa.toFixed(1)}`;
-  $("r-recompensa").style.color = ep.recompensa >= 0 ? "#4ade80" : "#fb7185";
+  $("r-recompensa").style.color = ep.recompensa >= 0 ? "#2ee59d" : "#ff4d45";
   $("r-progreso").textContent = `${Math.round(100 * last.s / pista.largo)}%`;
   $("r-salidas").textContent = ep.salidas;
   $("resultado").classList.remove("oculto");
@@ -903,7 +913,7 @@ function mostrarResultado() {
 // Mide los FPS y ajusta la resolución sola: si van lentos la baja, si sobran la sube.
 const fpsEl = document.createElement("div");
 fpsEl.id = "fps";
-document.body.appendChild(fpsEl);
+$("acciones").prepend(fpsEl);
 let fpsT0 = performance.now(), fpsCuadros = 0, fpsVentana = 0;
 let malos = 0, buenos = 0, espera = 0, techoRes = 9, techoHasta = 0;   // techoRes: nivel que ya se probó y fue lento
 // Se llama ANTES de dibujar: cambiar el tamaño del lienzo lo borra, y si se hace después
@@ -1130,13 +1140,13 @@ function estadoVivo(c) {
 
 function dibujarCurvas(eps) {
   const dib = (id, valor, lo, hi, color) => {
-    const cv = $(id), g = cv.getContext("2d"), W = cv.width, H = cv.height, n = eps.length;
+    const [, g, W, H] = lienzo2D($(id)), n = eps.length;
     g.clearRect(0, 0, W, H);
     const x = (i) => 4 + (i / Math.max(n - 1, 1)) * (W - 8), y = (v) => H - 6 - (clamp(v, lo, hi) - lo) / (hi - lo || 1) * (H - 12);
     g.strokeStyle = "rgba(148,163,184,.15)";
     for (const f of [0.25, 0.5, 0.75]) { g.beginPath(); g.moveTo(0, H * f); g.lineTo(W, H * f); g.stroke(); }
     eps.forEach((e, i) => {
-      g.fillStyle = e.resultado === "exito" ? "rgba(74,222,128,.75)" : "rgba(148,163,184,.35)";
+      g.fillStyle = e.resultado === "exito" ? "rgba(46,229,157,.8)" : "rgba(152,161,176,.35)";
       g.fillRect(x(i) - 1, y(valor(e)) - 1, 2.2, 2.2);
     });
     const k = Math.max(5, Math.round(n / 25));  // media móvil
@@ -1147,19 +1157,20 @@ function dibujarCurvas(eps) {
     }
     g.stroke();
   };
-  dib("curva-progreso", (e) => e.progreso, 0, 100, "#22d3ee");
+  dib("curva-progreso", (e) => e.progreso, 0, 100, "#ffd23f");
   const rs = eps.map((e) => e.recompensa);
-  dib("curva-recompensa", (e) => e.recompensa, Math.min(...rs), Math.max(...rs), "#a78bfa");
+  dib("curva-recompensa", (e) => e.recompensa, Math.min(...rs), Math.max(...rs), "#e10600");
 }
 
 function alternarVivo() {
   modoVivo = !modoVivo;
   $("btn-vivo").classList.toggle("activo", modoVivo);
-  $("btn-vivo").textContent = modoVivo ? "■ Salir del modo en vivo" : "● Ver entrenamiento en vivo";
+  $("btn-vivo").textContent = modoVivo ? "■ Salir de en vivo" : "● En vivo";
   $("insignia-vivo").classList.toggle("oculto", !modoVivo);
   // Piloto, piso, parámetros y semilla no aplican mientras se ve el entrenamiento
   document.body.classList.toggle("en-vivo", modoVivo);
   $("controles-experimento").disabled = modoVivo;
+  $("btn-correr").disabled = modoVivo;
   $("manejando").classList.toggle("oculto", !modoVivo);
   clearInterval(vivoTimer);
   ocultarFinVivo();
@@ -1201,6 +1212,10 @@ function conectar() {
   document.querySelectorAll("#camaras button[data-cam]").forEach((b) => (b.onclick = () => ponerCamara(b.dataset.cam)));
   const paneles = () => document.body.classList.toggle("limpio");
   $("btn-paneles").onclick = paneles;
+  $("btn-plegar").onclick = () => {
+    const plegado = document.body.classList.toggle("plegado");
+    $("btn-plegar").setAttribute("aria-expanded", String(!plegado));
+  };
   const selCalidad = $("sel-calidad");
   selCalidad.value = eleccion;
   selCalidad.title = `Tarjeta gráfica: ${GPU || "desconocida"} · en uso: ${Q.nombre}`;
