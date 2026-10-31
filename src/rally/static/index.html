@@ -6,7 +6,7 @@
   <title>Autonomous Rally · Visor 3D</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8F%81%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,600;0,700;0,900;1,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
     {"imports": {
@@ -18,180 +18,199 @@
 <body>
   <div id="escena"></div>
 
-  <!-- Marca + controles del episodio -->
-  <section id="panel-control" class="vidrio">
+  <!-- Barra superior: marca, cámaras y acciones (siempre visible) -->
+  <header id="barra-sup">
     <div class="marca">
-      <div class="logo">
-        <svg viewBox="0 0 32 32"><path d="M4 22c0-7 5-12 12-12s12 5 12 12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M16 22l6-8" stroke="#facc15" stroke-width="3" stroke-linecap="round"/><circle cx="16" cy="22" r="2.6" fill="#facc15"/></svg>
-      </div>
+      <span class="bandera" aria-hidden="true"></span>
       <div>
         <h1>AUTONOMOUS RALLY</h1>
-        <p>AutonomousRally-v0 · Gymnasium</p>
+        <p>Mónaco · AutonomousRally-v0</p>
       </div>
     </div>
-    <!-- Solo en modo en vivo: quién maneja (el agente que se está entrenando) -->
-    <div id="manejando" class="manejando oculto">
-      <small>Manejando ahora</small>
-      <strong id="manejando-agente">Esperando entrenamiento…</strong>
-      <span class="entrenando"><span class="punto"></span><span id="manejando-detalle">entrenando</span></span>
-      <p>En modo en vivo los controles no aplican: maneja el agente que se está entrenando. Sal del modo en vivo para correr tus propios experimentos.</p>
-    </div>
-    <fieldset id="controles-experimento" class="controles">
-    <label class="campo">Piloto
-      <select id="sel-piloto"></select>
-    </label>
-    <div class="campo">Piso
-      <div class="segmentado" id="sel-piso">
-        <button data-mu="0.9" class="activo">☀ Seco</button>
-        <button data-mu="0.5">☂ Mojado</button>
-      </div>
-    </div>
-    <div class="campo">Parámetros del experimento
-      <div id="parametros" class="parametros"></div>
-    </div>
-    <div class="fila-semilla">
-      <label class="campo">Semilla
-        <input id="inp-semilla" type="number" value="0" min="0" max="9999">
+    <nav id="camaras" aria-label="Cámaras">
+      <button data-cam="persecucion" class="activo" title="Tecla 1">Persecución</button>
+      <button data-cam="tv" title="Tecla 2">TV</button>
+      <button data-cam="aerea" title="Tecla 3">Aérea</button>
+      <button data-cam="cabina" title="Tecla 4">Cabina</button>
+      <button data-cam="libre" title="Tecla 5">Libre</button>
+      <button data-cam="vitrina" title="Tecla 6: gira alrededor del carro">Vitrina</button>
+    </nav>
+    <div id="acciones">
+      <button id="btn-vivo" class="vivo" title="Muestra el entrenamiento que está corriendo">● En vivo</button>
+      <label class="calidad" title="Calidad gráfica">
+        <span>Gráficos</span>
+        <select id="sel-calidad">
+          <option value="auto">Auto</option><option value="alta">Alta</option>
+          <option value="media">Media</option><option value="baja">Baja</option>
+        </select>
       </label>
-      <button id="btn-azar" title="Sortear parámetros y semilla dentro de los rangos de la ficha">🎲 Aleatorio</button>
-    </div>
-    <button id="btn-correr" class="primario">▶ Correr experimento</button>
-    </fieldset>
-    <button id="btn-vivo" class="vivo" title="Muestra el entrenamiento que está corriendo (rally pipeline ppo --vivo)">● Ver entrenamiento en vivo</button>
-    <p class="nota nota-normal">Cada corrida es una simulación nueva en Python. Mismos parámetros y semilla → mismo resultado (reproducible).</p>
-  </section>
-
-  <!-- Cámaras -->
-  <nav id="camaras" class="vidrio">
-    <button data-cam="persecucion" class="activo" title="1">Persecución</button>
-    <button data-cam="tv" title="2">TV</button>
-    <button data-cam="aerea" title="3">Aérea</button>
-    <button data-cam="cabina" title="4">Cabina</button>
-    <button data-cam="libre" title="5">Libre</button>
-    <button data-cam="vitrina" title="6: gira alrededor del carro">Vitrina</button>
-    <select id="sel-calidad" title="Calidad gráfica">
-      <option value="auto">⚙ Auto</option><option value="alta">⚙ Alta</option>
-      <option value="media">⚙ Media</option><option value="baja">⚙ Baja</option>
-    </select>
-    <button id="btn-paneles" title="H: ocultar/mostrar paneles">👁</button>
-  </nav>
-
-  <!-- Minimapa -->
-  <section id="minimapa-caja" class="vidrio">
-    <canvas id="minimapa" width="300" height="214"></canvas>
-  </section>
-
-  <!-- Telemetría -->
-  <aside id="telemetria" class="vidrio">
-    <div class="pestanas">
-      <button data-tab="tel" class="activo">Telemetría</button>
-      <button data-tab="exp">Experimentos <span id="n-exp" class="contador">0</span></button>
-      <button data-tab="apr">Aprendizaje</button>
-    </div>
-
-    <!-- Modo en vivo: resultado del episodio que se acaba de ver -->
-    <div id="fin-vivo" class="fin-vivo oculto">
-      <span id="fin-vivo-icono" class="icono-fin">🏁</span>
-      <div>
-        <strong id="fin-vivo-titulo">Episodio #— · Vuelta completa</strong>
-        <small id="fin-vivo-datos" class="mono">—</small>
+      <div class="ayuda-caja">
+        <button class="cuadro" aria-label="Atajos de teclado">?</button>
+        <div id="ayuda"><b>1–6</b> cámara<br><b>Espacio</b> pausa<br><b>R</b> reiniciar<br><b>← →</b> adelantar<br><b>H</b> ocultar paneles</div>
       </div>
+      <button id="btn-paneles" class="cuadro" title="Ocultar o mostrar paneles (tecla H)" aria-label="Ocultar o mostrar paneles">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+      </button>
     </div>
+  </header>
 
-    <div id="tab-apr" class="oculto">
-      <div id="apr-estado" class="apr-estado">Sin entrenamiento activo. Inicia uno con
-        <code>RALLY_VIVO=1 dvc repro</code> o <code>rally pipeline ppo --vivo</code>.</div>
-      <div class="resumen-exp" id="apr-resumen"></div>
-      <small class="etiqueta">Progreso por episodio (%)</small>
-      <canvas id="curva-progreso" width="300" height="120"></canvas>
-      <small class="etiqueta">Recompensa por episodio</small>
-      <canvas id="curva-recompensa" width="300" height="90"></canvas>
-    </div>
-
-    <div id="tab-exp" class="oculto">
-      <div id="lista-exp" class="lista-exp"><p class="vacio">Corre un experimento para empezar el registro.</p></div>
-    </div>
-
-    <div id="tab-tel">
-    <div class="fila-titulo">
-      <span id="t-experimento">EXPERIMENTO #—</span>
-      <span id="estado" class="pastilla ok">● EN PISTA</span>
-    </div>
-
-    <div class="grande">
-      <div>
-        <small>Recompensa total</small>
-        <strong id="t-total" class="mono">+0.0</strong>
+  <!-- Controles del experimento -->
+  <aside id="panel-control" class="panel">
+    <button id="btn-plegar" class="cabecera-panel" title="Plegar o abrir el panel" aria-expanded="true">
+      <span>Experimento</span><span class="flecha" aria-hidden="true">▾</span>
+    </button>
+    <div class="cuerpo-panel">
+      <!-- Solo en modo en vivo: quién maneja (el agente que se está entrenando) -->
+      <div id="manejando" class="manejando oculto">
+        <small>Manejando ahora</small>
+        <strong id="manejando-agente">Esperando entrenamiento…</strong>
+        <span class="entrenando"><span class="punto"></span><span id="manejando-detalle">entrenando</span></span>
+        <p>Maneja el agente que se está entrenando. Sal de EN VIVO para correr tus propios experimentos.</p>
       </div>
-      <div class="der">
-        <small>Último paso</small>
-        <strong id="t-paso" class="mono pequeno">+0.00</strong>
-      </div>
+      <fieldset id="controles-experimento" class="controles">
+        <label class="campo">Piloto
+          <select id="sel-piloto"></select>
+        </label>
+        <div class="campo">Piso
+          <div class="segmentado" id="sel-piso">
+            <button data-mu="0.9" class="activo">Seco</button>
+            <button data-mu="0.5">Lluvia</button>
+          </div>
+        </div>
+        <div class="campo">Parámetros
+          <div id="parametros" class="parametros"></div>
+        </div>
+        <div class="fila-semilla">
+          <label class="campo">Semilla
+            <input id="inp-semilla" type="number" value="0" min="0" max="9999">
+          </label>
+          <button id="btn-azar" title="Sortear parámetros y semilla dentro de los rangos de la ficha">Aleatorio</button>
+        </div>
+      </fieldset>
+      <p class="nota nota-normal">Cada corrida es una simulación nueva en Python. Mismos parámetros y semilla → mismo resultado.</p>
     </div>
-    <canvas id="grafica" width="300" height="64"></canvas>
-
-    <small class="etiqueta">Checkpoints</small>
-    <div id="cps" class="cps"></div>
-    <div class="progreso"><div id="t-progreso"></div><span id="t-progreso-txt">0%</span></div>
-
-    <small class="etiqueta">Sensores (lo que observa el agente)</small>
-    <canvas id="radar" width="300" height="150"></canvas>
-
-    <small class="etiqueta">Desvío del centro <span id="t-desvio" class="mono">+0.0 m</span></small>
-    <div class="carril"><div class="borde-izq"></div><div class="borde-der"></div><div id="t-desvio-punto"></div></div>
+    <div class="pie-panel">
+      <button id="btn-correr" class="primario">▶ Correr experimento</button>
     </div>
   </aside>
 
-  <!-- Instrumentos -->
-  <section id="instrumentos" class="vidrio">
+  <!-- Columna derecha: minimapa y telemetría (la telemetría usa el alto que quede) -->
+  <div id="col-der">
+    <section id="minimapa-caja" class="panel">
+      <canvas id="minimapa" width="300" height="214"></canvas>
+    </section>
+
+    <aside id="telemetria" class="panel">
+      <div class="pestanas">
+        <button data-tab="tel" class="activo">Telemetría</button>
+        <button data-tab="exp">Registro <span id="n-exp" class="contador">0</span></button>
+        <button data-tab="apr">Aprendizaje</button>
+      </div>
+
+      <!-- Modo en vivo: resultado del episodio que se acaba de ver -->
+      <div id="fin-vivo" class="fin-vivo oculto">
+        <span id="fin-vivo-icono" class="icono-fin">🏁</span>
+        <div>
+          <strong id="fin-vivo-titulo">Episodio #— · Vuelta completa</strong>
+          <small id="fin-vivo-datos" class="mono">—</small>
+        </div>
+      </div>
+
+      <div id="tab-apr" class="oculto">
+        <div id="apr-estado" class="apr-estado">Sin entrenamiento activo. Inicia uno con
+          <code>RALLY_VIVO=1 dvc repro</code> o <code>rally pipeline ppo --vivo</code>.</div>
+        <div class="resumen-exp" id="apr-resumen"></div>
+        <small class="etiqueta">Progreso por episodio (%)</small>
+        <canvas id="curva-progreso" width="300" height="120"></canvas>
+        <small class="etiqueta">Recompensa por episodio</small>
+        <canvas id="curva-recompensa" width="300" height="90"></canvas>
+      </div>
+
+      <div id="tab-exp" class="oculto">
+        <div id="lista-exp" class="lista-exp"><p class="vacio">Corre un experimento para empezar el registro.</p></div>
+      </div>
+
+      <div id="tab-tel">
+        <div class="fila-titulo">
+          <span id="t-experimento">EXPERIMENTO #—</span>
+          <span id="estado" class="pastilla ok">EN PISTA</span>
+        </div>
+
+        <div class="grande">
+          <div>
+            <small>Recompensa total</small>
+            <strong id="t-total" class="mono">+0.0</strong>
+          </div>
+          <div class="der">
+            <small>Último paso</small>
+            <strong id="t-paso" class="mono pequeno">+0.00</strong>
+          </div>
+        </div>
+        <canvas id="grafica" width="300" height="64"></canvas>
+
+        <small class="etiqueta">Sectores</small>
+        <div id="cps" class="cps"></div>
+        <div class="progreso"><div id="t-progreso"></div><span id="t-progreso-txt">0%</span></div>
+
+        <small class="etiqueta">Sensores (lo que observa el agente)</small>
+        <canvas id="radar" width="300" height="150"></canvas>
+
+        <small class="etiqueta">Desvío del centro <span id="t-desvio" class="mono">+0.0 m</span></small>
+        <div class="carril"><div class="borde-izq"></div><div class="borde-der"></div><div id="t-desvio-punto"></div></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Instrumentos: como el tablero de una transmisión de carreras -->
+  <section id="instrumentos">
+    <div class="ala izq">
+      <div class="pedal"><span>ACEL</span><div class="tubo"><div id="i-acel" class="relleno acel"></div></div></div>
+      <div class="pedal"><span>FRENO</span><div class="tubo"><div id="i-freno" class="relleno freno"></div></div></div>
+    </div>
+
     <div class="velocimetro">
       <svg viewBox="0 0 200 200">
         <defs>
           <linearGradient id="grad-vel" x1="0" x2="1">
-            <stop offset="0" stop-color="#22d3ee"/><stop offset=".6" stop-color="#a78bfa"/><stop offset="1" stop-color="#f43f5e"/>
+            <stop offset="0" stop-color="#ffd23f"/><stop offset=".65" stop-color="#ff8a00"/><stop offset="1" stop-color="#e10600"/>
           </linearGradient>
         </defs>
         <path d="M 30 150 A 80 80 0 1 1 170 150" class="arco-fondo"/>
         <path id="arco-vel" d="M 30 150 A 80 80 0 1 1 170 150" class="arco-valor"/>
         <g id="marcas"></g>
-        <line id="aguja" x1="100" y1="100" x2="100" y2="34" />
-        <circle cx="100" cy="100" r="7" class="centro-aguja"/>
+        <line id="aguja" x1="100" y1="42" x2="100" y2="24"/>
       </svg>
       <div class="lectura">
-        <strong id="i-kmh" class="mono">0</strong><span>km/h</span>
+        <strong id="i-kmh">0</strong><span>KM/H</span>
         <small id="i-ms" class="mono">0.0 m/s</small>
       </div>
     </div>
 
-    <div class="pedales">
-      <div class="pedal"><div class="tubo"><div id="i-acel" class="relleno acel"></div></div><span>ACEL</span></div>
-      <div class="pedal"><div class="tubo"><div id="i-freno" class="relleno freno"></div></div><span>FRENO</span></div>
-    </div>
-
-    <div class="volante-caja">
-      <svg id="volante" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="40" fill="none" stroke="#e5e7eb" stroke-width="8"/>
-        <circle cx="50" cy="50" r="9" fill="#e5e7eb"/>
-        <path d="M14 56 L41 52 M86 56 L59 52 M50 59 L50 88" stroke="#e5e7eb" stroke-width="7" stroke-linecap="round"/>
-        <rect x="46" y="6" width="8" height="10" rx="2" fill="#f97316"/>
-      </svg>
-      <span id="i-dir" class="mono">0°</span>
-    </div>
-
-    <div class="agarre">
-      <svg viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="40" class="anillo-fondo"/>
-        <circle id="i-agarre-arco" cx="50" cy="50" r="40" class="anillo"/>
-      </svg>
-      <div class="lectura-agarre"><strong id="i-agarre" class="mono">0%</strong><span>AGARRE</span></div>
+    <div class="ala der">
+      <div class="volante-caja">
+        <svg id="volante" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#e8eaee" stroke-width="8"/>
+          <circle cx="50" cy="50" r="9" fill="#e8eaee"/>
+          <path d="M14 56 L41 52 M86 56 L59 52 M50 59 L50 88" stroke="#e8eaee" stroke-width="7" stroke-linecap="round"/>
+          <rect x="46" y="6" width="8" height="10" rx="2" fill="#e10600"/>
+        </svg>
+        <span id="i-dir" class="mono">0°</span>
+      </div>
+      <div class="agarre">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="40" class="anillo-fondo"/>
+          <circle id="i-agarre-arco" cx="50" cy="50" r="40" class="anillo"/>
+        </svg>
+        <div class="lectura-agarre"><strong id="i-agarre" class="mono">0%</strong><span>AGARRE</span></div>
+      </div>
     </div>
   </section>
 
   <!-- Línea de tiempo -->
-  <section id="linea-tiempo" class="vidrio">
+  <section id="linea-tiempo" class="panel">
     <button id="btn-play" class="icono" title="Espacio">❚❚</button>
-    <button id="btn-reiniciar" class="icono" title="R">↺</button>
-    <input id="barra" type="range" min="0" max="1" step="0.001" value="0">
+    <button id="btn-reiniciar" class="icono" title="Tecla R">↺</button>
+    <input id="barra" type="range" min="0" max="1" step="0.001" value="0" aria-label="Posición del episodio">
     <span id="reloj" class="mono">0.0 / 0.0 s</span>
     <div class="segmentado velocidades" id="sel-vel">
       <button data-v="0.5">½×</button>
@@ -205,25 +224,32 @@
   <div id="insignia-vivo" class="oculto"><span class="punto"></span><span id="insignia-txt">EN VIVO</span></div>
 
   <div id="resultado" class="oculto">
-    <div class="tarjeta vidrio">
-      <div id="r-icono" class="r-icono">🏁</div>
-      <h2 id="r-titulo">VUELTA COMPLETA</h2>
-      <div class="r-datos">
-        <div><small>Tiempo</small><strong id="r-tiempo" class="mono">—</strong></div>
-        <div><small>Recompensa</small><strong id="r-recompensa" class="mono">—</strong></div>
-        <div><small>Progreso</small><strong id="r-progreso" class="mono">—</strong></div>
-        <div><small>Salidas</small><strong id="r-salidas" class="mono">—</strong></div>
-      </div>
-      <div class="r-botones">
-        <button id="r-repetir">↺ Repetir</button>
-        <button id="r-cambiar" class="primario">☂ Probar con lluvia</button>
-        <button id="r-cerrar">Cerrar</button>
+    <div class="tarjeta">
+      <div class="r-franja" aria-hidden="true"></div>
+      <div class="r-contenido">
+        <small class="r-sobre">Fin del episodio</small>
+        <h2 id="r-titulo">VUELTA COMPLETA</h2>
+        <div class="r-datos">
+          <div><small>Tiempo</small><strong id="r-tiempo" class="mono">—</strong></div>
+          <div><small>Recompensa</small><strong id="r-recompensa" class="mono">—</strong></div>
+          <div><small>Progreso</small><strong id="r-progreso" class="mono">—</strong></div>
+          <div><small>Salidas</small><strong id="r-salidas" class="mono">—</strong></div>
+        </div>
+        <div class="r-botones">
+          <button id="r-repetir">↺ Repetir</button>
+          <button id="r-cambiar" class="primario">Probar con lluvia</button>
+          <button id="r-cerrar">Cerrar</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <div id="cargando"><div class="giro"></div><span id="cargando-txt">Cargando pista…</span></div>
-  <div id="ayuda" class="mono">1-6 cámara · Espacio pausa · R reiniciar · ←/→ adelantar</div>
+  <div id="cargando">
+    <span class="bandera grande-b" aria-hidden="true"></span>
+    <strong class="c-titulo">AUTONOMOUS RALLY</strong>
+    <div class="barra-carga"><i></i></div>
+    <span id="cargando-txt">Cargando pista…</span>
+  </div>
 
   <script type="module" src="app.js"></script>
 </body>
