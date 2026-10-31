@@ -58,20 +58,20 @@
     },
     "qlearning": {
       "seco": {
-        "vueltas_pct": 0.0,
-        "tiempo_mediano_s": null,
-        "tiempo_p90_s": null,
-        "incidentes_ep": 1.54,
-        "recompensa_media": -45.0,
-        "progreso_pct": 21.7
+        "vueltas_pct": 60.0,
+        "tiempo_mediano_s": 80.15,
+        "tiempo_p90_s": 81.1,
+        "incidentes_ep": 0.8,
+        "recompensa_media": 96.38,
+        "progreso_pct": 81.7
       },
       "mojado": {
-        "vueltas_pct": 0.0,
-        "tiempo_mediano_s": null,
-        "tiempo_p90_s": null,
-        "incidentes_ep": 1.93,
-        "recompensa_media": -47.03,
-        "progreso_pct": 11.7
+        "vueltas_pct": 15.0,
+        "tiempo_mediano_s": 102.2,
+        "tiempo_p90_s": 103.84,
+        "incidentes_ep": 1.64,
+        "recompensa_media": 29.45,
+        "progreso_pct": 75.0
       }
     },
     "ppo": {
@@ -114,11 +114,11 @@
     },
     "qlearning": {
       "criterios": {
-        "mejora_en_mojado": false,
+        "mejora_en_mojado": true,
         "no_pierde_vueltas_en_seco": false,
-        "tiempo_seco_maximo_5pct": false
+        "tiempo_seco_maximo_5pct": true
       },
-      "tiempo_seco_cambio_pct": null,
+      "tiempo_seco_cambio_pct": 3.6,
       "aceptado": false
     },
     "ppo": {
