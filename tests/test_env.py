@@ -173,6 +173,55 @@ def test_qlearning_evaluacion_determinista():
     assert all((ag(obs, None) == ag(obs, None)).all() for _ in range(5))
 
 
+def test_qlearning_sin_experiencia_no_frena_y_gira_a_fondo():
+    from rally.agentes.discreto import ACCIONES, NEUTRA
+    from rally.agentes.qlearning import AgenteQ
+    ag = AgenteQ(seed=0)
+    assert ag.mejor(0) == NEUTRA                  # estado nunca visto
+    ag.q[0, 3] = -5.0
+    assert ag.mejor(0) == NEUTRA                  # lo único probado salió mal
+    ag.q[0, 3] = 5.0
+    assert ag.mejor(0) == 3
+    assert abs(ACCIONES[NEUTRA][1]) < 1e-6        # volante recto
+
+
+def test_tabla_distingue_la_lluvia():
+    from rally.agentes.discreto import estado
+    seco, mojado = AutonomousRallyEnv(mu=0.9), AutonomousRallyEnv(mu=0.5)
+    obs_s, obs_m = seco.reset(seed=0)[0], mojado.reset(seed=0)[0]
+    assert estado(obs_s) != estado(obs_m)
+
+
+def test_accion_discreta_es_la_mas_parecida():
+    from rally.agentes.discreto import ACCIONES, discreta
+    assert (ACCIONES[discreta([0.0, 0.0])] == [0.0, 0.0]).all()
+    assert (ACCIONES[discreta([0.95, -0.93])] == [1.0, -1.0]).all()
+
+
+def test_punto_de_guardado_q(tmp_path):
+    from rally.agentes.qlearning import PuntoQ
+    PuntoQ(tmp_path, "a").guardar({"it": 7}, q=np.ones(3))
+    d = PuntoQ(tmp_path, "a").cargar()
+    assert d["estado"]["it"] == 7 and (d["q"] == 1).all()
+    assert PuntoQ(tmp_path, "otra-huella").cargar() is None   # otros parámetros: empieza de cero
+    PuntoQ(tmp_path, "a").borrar()
+    assert PuntoQ(tmp_path, "a").cargar() is None
+
+
+def test_maestro_qlearning_completa_en_seco_y_lluvia():
+    import yaml
+    from rally.agentes.qlearning import maestro
+    pol = maestro(yaml.safe_load(open("params.yaml"))["qlearning"])
+    for mu in (0.75, 0.45):
+        env = AutonomousRallyEnv(mu=mu)
+        obs, info = env.reset(seed=0)
+        done = False
+        while not done:
+            obs, _, term, trunc, info = env.step(pol(obs, info))
+            done = term or trunc
+        assert info["outcome"] == "exito", mu
+
+
 def test_salto_de_proyeccion_no_es_avance(env):
     """Si el carro aparece cerca de otro tramo (la horquilla), s no salta."""
     env.reset(seed=0)

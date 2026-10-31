@@ -12,11 +12,23 @@ datos:               # dataset de demostraciones para el preentrenamiento por im
   semilla: 500         # semillas distintas a las de evaluación
 
 qlearning:
-  episodios: 1500
-  alpha: 0.15
+  dagger_iter: 30        # fase 1: imitación con DAgger
+  dagger_episodios: 12   # vueltas por iteración
+  episodios: 600         # fase 2: Q-learning desde la mejor imitación
+  q_inicial: 5.0         # valor inicial de la acción del maestro (orden de los Q reales)
+  eval_cada: 50          # episodios entre evaluaciones rápidas
+  alpha: 0.1
   gamma: 0.98
-  epsilon_inicial: 1.0
-  epsilon_final: 0.02
+  epsilon_inicial: 0.1   # ya sabe manejar: explora poco
+  epsilon_final: 0.0
+  mu_min: 0.75           # practica con los mismos rangos que el PPO
+  mu_max: 1.0
+  prob_lluvia: 0.5
+  lluvia_min: 0.45
+  lluvia_max: 0.6
+  maestro_mu_seco: 0.8
+  maestro_mu_lluvia: 0.45
+  maestro_v_recta_lluvia: 16.0   # la frenada cabe en los 50 m que ve la tabla
   semilla: 0
 
 ppo:

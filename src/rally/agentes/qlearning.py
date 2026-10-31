@@ -12,9 +12,13 @@ solo con ε-greedy desde cero casi nunca llega a la meta en un circuito de 1 km
    `q_inicial`) y se corrige con la ecuación de Bellman practicando con seco y
    lluvia. Así Q-learning arregla los lugares donde la imitación choca.
 
-En las dos fases se evalúa cada cierto tiempo y se guarda la mejor tabla.
+En las dos fases se evalúa cada cierto tiempo y se guarda la mejor tabla. El
+avance queda en runs/qlearning-punto: si el computador se apaga, el próximo
+`dvc repro` sigue donde quedó.
 """
 
+import hashlib
+import json
 from pathlib import Path
 
 import mlflow
@@ -22,6 +26,7 @@ import numpy as np
 
 from rally import track
 from rally.agentes.discreto import ACCIONES, N_ESTADOS, NEUTRA, discreta, estado
+from rally.env import VERSION
 from rally.policies import PurePursuit
 
 # Semillas de entrenamiento lejos de las de evaluación (0-99) y del dataset (500+)
@@ -37,8 +42,10 @@ class AgenteQ:
         self.rng = np.random.default_rng(seed)
 
     def mejor(self, s):
+        # Empate con la acción neutra (estado sin experiencia, o las demás ya salieron
+        # negativas): gana la neutra, no la primera de la tabla (frenar y girar a fondo)
         fila = self.q[s]
-        return NEUTRA if not fila.any() else int(np.argmax(fila))
+        return NEUTRA if fila[NEUTRA] == fila.max() else int(np.argmax(fila))
 
     def elegir(self, s, epsilon=0.0):
         if self.rng.random() < epsilon:
@@ -67,6 +74,31 @@ class AgenteQ:
         return ag
 
 
+class PuntoQ:
+    """Guarda el entrenamiento a medias. Solo se reanuda si params y ambiente son los mismos."""
+
+    def __init__(self, carpeta, huella):
+        self.ruta, self.huella = Path(carpeta) / "punto.npz", huella
+
+    def guardar(self, estado_json, **tablas):
+        self.ruta.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.ruta.with_suffix(".tmp.npz")
+        np.savez_compressed(tmp, huella=self.huella, estado=json.dumps(estado_json), **tablas)
+        tmp.replace(self.ruta)    # escritura atómica
+
+    def cargar(self):
+        try:
+            d = np.load(self.ruta)
+            if str(d["huella"]) != self.huella:
+                return None
+            return {**{k: d[k] for k in d.files}, "estado": json.loads(str(d["estado"]))}
+        except (OSError, ValueError, KeyError):
+            return None
+
+    def borrar(self):
+        self.ruta.unlink(missing_ok=True)
+
+
 def maestro(p):
     """Pure pursuit que mira la señal de lluvia. Con lluvia va a 16 m/s en las rectas:
     así la frenada para la curva cabe en los 50 m que la tabla alcanza a ver."""
@@ -78,8 +110,8 @@ def maestro(p):
 def puntaje(m):
     """Orden de las evaluaciones rápidas: vueltas, luego avance, luego tiempo."""
     tiempo = (m.get("seco_tiempo_s") or 999) + (m.get("mojado_tiempo_s") or 999)
-    return (m["seco_vueltas_pct"] + m["mojado_vueltas_pct"],
-            m["seco_progreso_pct"] + m["mojado_progreso_pct"], -tiempo)
+    return [m["seco_vueltas_pct"] + m["mojado_vueltas_pct"],
+            m["seco_progreso_pct"] + m["mojado_progreso_pct"], -tiempo]
 
 
 def evaluar(politica, env, n=5, mu_seco=0.9, mu_mojado=0.5):
@@ -88,10 +120,10 @@ def evaluar(politica, env, n=5, mu_seco=0.9, mu_mojado=0.5):
         env.unwrapped.cfg.mu = mu
         ok, prog, tiempos = 0, 0.0, []
         for k in range(n):
-            obs, info = env.unwrapped.reset(seed=SEMILLA_EVAL + k)
+            obs, info = env.reset(seed=SEMILLA_EVAL + k)
             done = False
             while not done:
-                obs, _, term, trunc, info = env.unwrapped.step(ACCIONES[politica(obs)])
+                obs, _, term, trunc, info = env.step(ACCIONES[politica(obs)])
                 done = term or trunc
             ok += info["outcome"] == "exito"
             prog += info["s_best"] / track.LAP
@@ -103,26 +135,44 @@ def evaluar(politica, env, n=5, mu_seco=0.9, mu_mojado=0.5):
     return res
 
 
-def entrenar(env_fn, params, grabador=None, al_terminar_episodio=None):
+def entrenar(env_fn, params, grabador=None, al_terminar_episodio=None, carpeta_punto="runs/qlearning-punto"):
     """Entrena en dos fases (DAgger y Q-learning). Devuelve el agente y la lista de resúmenes."""
     from rally.agentes.ppo import AdherenciaAleatoria
 
     p = params
-    env = AdherenciaAleatoria(env_fn(), p["mu_min"], p["mu_max"], p["prob_lluvia"], p["lluvia_min"], p["lluvia_max"])
-    env.reset(seed=SEMILLA_BASE + p["semilla"] * 10_000)
-    env_eval = env_fn()
+    huella = hashlib.sha1(json.dumps([p, VERSION, N_ESTADOS], sort_keys=True).encode()).hexdigest()[:16]
+    punto = PuntoQ(carpeta_punto, huella)
+    previo = punto.cargar()
     ag = AgenteQ(p["alpha"], p["gamma"], p["semilla"])
-    profe = maestro(p)
-    rng = np.random.default_rng(p["semilla"])
     cuentas = np.zeros((N_ESTADOS, len(ACCIONES)), dtype=np.float32)
-    historia, pasos = [], 0
+    mejores_cuentas, tabla_mejor = cuentas.copy(), None
+    # Avance: iteraciones de DAgger y episodios de Q-learning hechos, y lo mejor visto
+    st = {"it": 0, "k": 0, "pasos": 0, "episodios": 0, "mejor": None, "metricas": None, "paso_mejor": 0}
+    if previo:
+        st = previo["estado"]
+        cuentas, mejores_cuentas = previo["cuentas"], previo["mejores_cuentas"]
+        ag.q, ag.visitas = previo["q"], previo["visitas"]
+        tabla_mejor = previo["tabla_mejor"] if st["k"] > 0 else None   # la fase 2 la crea al empezar
+        print(f"  Reanudando: DAgger {st['it']}/{p['dagger_iter']} · Q-learning {st['k']}/{p['episodios']}")
+        mlflow.set_tag("reanudado", f"dagger {st['it']}, q {st['k']}")
+
+    def guardar_punto():
+        punto.guardar(st, cuentas=cuentas, mejores_cuentas=mejores_cuentas, q=ag.q, visitas=ag.visitas,
+                      tabla_mejor=tabla_mejor if tabla_mejor is not None else np.zeros(1))
+
+    # Otra semilla al reanudar: no se repiten los mismos episodios
+    env = AdherenciaAleatoria(env_fn(), p["mu_min"], p["mu_max"], p["prob_lluvia"], p["lluvia_min"], p["lluvia_max"])
+    env.reset(seed=SEMILLA_BASE + p["semilla"] * 10_000 + st["episodios"])
+    env_eval = env_fn()
+    profe = maestro(p)
+    rng = np.random.default_rng(p["semilla"] + st["episodios"])
+    historia = []
 
     def imitada(s):
         fila = cuentas[s]
         return NEUTRA if not fila.any() else int(np.argmax(fila))
 
     def episodio(elegir, fase, valor, etiquetar=False, aprender=False):
-        nonlocal pasos
         obs, info = env.reset()
         s, done, total = estado(obs), False, 0.0
         while not done:
@@ -137,46 +187,58 @@ def entrenar(env_fn, params, grabador=None, al_terminar_episodio=None):
                 ag.visitas[s] += 1
             if grabador is not None:
                 grabador.paso(obs, info, ACCIONES[a], r)
-            s, total, pasos, done = s2, total + r, pasos + 1, term or trunc
-        res = {"episodio": len(historia) + 1, "recompensa": total, "resultado": info["outcome"],
-               "tiempo": info["t"], "progreso": info["s_best"], "epsilon": valor, "pasos": pasos, "fase": fase}
+            s, total, done = s2, total + r, term or trunc
+            st["pasos"] += 1
+        st["episodios"] += 1
+        res = {"episodio": st["episodios"], "recompensa": total, "resultado": info["outcome"], "tiempo": info["t"],
+               "progreso": info["s_best"], "epsilon": valor, "pasos": st["pasos"], "fase": fase}
         if grabador is not None:
-            grabador.fin(info, pasos, {"epsilon": valor})
+            grabador.fin(info, st["pasos"], {"epsilon": valor})
         historia.append(res)
         if al_terminar_episodio:
             al_terminar_episodio(res, ag)
 
-    def revisar(politica, paso, prefijo, mejor):
+    def revisar(politica, paso, prefijo):
+        """Evalúa y dice si es lo mejor visto hasta ahora."""
         m = evaluar(politica, env_eval)
         mlflow.log_metrics({f"{prefijo}_{k}": v for k, v in m.items() if v is not None}, step=paso)
         print(f"  {prefijo} {paso}: seco {m['seco_vueltas_pct']:.0f}% · mojado {m['mojado_vueltas_pct']:.0f}%", flush=True)
-        return (puntaje(m), m) if mejor is None or puntaje(m) > mejor[0] else None
+        if st["mejor"] is not None and puntaje(m) <= st["mejor"]:
+            return False
+        st["mejor"], st["metricas"], st["paso_mejor"] = puntaje(m), m, paso
+        return True
 
     # ---- Fase 1: imitación con DAgger
-    mejor, mejores_cuentas = None, cuentas.copy()
-    for it in range(p["dagger_iter"]):
+    while st["it"] < p["dagger_iter"]:
+        it = st["it"]
         beta = 1.0 if it == 0 else max(0.0, 0.6 - 0.06 * (it - 1))   # probabilidad de que maneje el maestro
         for _ in range(p["dagger_episodios"]):
             episodio(lambda s, obs, info: discreta(profe(obs, info)) if rng.random() < beta else imitada(s),
                      "dagger", beta, etiquetar=True)
-        nuevo = revisar(lambda o: imitada(estado(o)), it + 1, "dagger", mejor)
-        if nuevo:
-            mejor, mejores_cuentas = nuevo, cuentas.copy()
+        st["it"] += 1
+        if revisar(lambda o: imitada(estado(o)), st["it"], "dagger"):
+            mejores_cuentas = cuentas.copy()
+        guardar_punto()
 
     # ---- Fase 2: Q-learning desde la mejor imitación
-    total = mejores_cuentas.sum(1, keepdims=True)
-    ag.q = np.where(total > 0, p["q_inicial"] * mejores_cuentas / np.maximum(total, 1), 0).astype(np.float32)
-    mejor_q = (mejor[0], ag.q.copy(), mejor[1], 0)
-    for k in range(p["episodios"]):
+    if tabla_mejor is None:
+        total = mejores_cuentas.sum(1, keepdims=True)
+        ag.q = np.where(total > 0, p["q_inicial"] * mejores_cuentas / np.maximum(total, 1), 0).astype(np.float32)
+        tabla_mejor = ag.q.copy()
+        st["paso_mejor"] = 0
+    while st["k"] < p["episodios"]:
+        k = st["k"]
         frac = k / max(p["episodios"] - 1, 1)
         eps = p["epsilon_inicial"] + (p["epsilon_final"] - p["epsilon_inicial"]) * frac
         episodio(lambda s, obs, info: ag.elegir(s, eps), "qlearning", eps, aprender=True)
-        if (k + 1) % p["eval_cada"] == 0:
-            nuevo = revisar(lambda o: ag.mejor(estado(o)), k + 1, "q", mejor_q)
-            if nuevo:
-                mejor_q = (nuevo[0], ag.q.copy(), nuevo[1], k + 1)
-    ag.q = mejor_q[1]
-    mlflow.log_metrics({f"mejor_{k}": v for k, v in mejor_q[2].items() if v is not None})
-    mlflow.set_tag("mejor_episodio_qlearning", mejor_q[3])
-    print(f"  Mejor tabla: episodio de Q-learning {mejor_q[3]} · {mejor_q[2]}")
+        st["k"] += 1
+        if st["k"] % p["eval_cada"] == 0:
+            if revisar(lambda o: ag.mejor(estado(o)), st["k"], "q"):
+                tabla_mejor = ag.q.copy()
+            guardar_punto()
+    ag.q = tabla_mejor
+    mlflow.log_metrics({f"mejor_{k}": v for k, v in st["metricas"].items() if v is not None})
+    mlflow.set_tag("mejor_episodio_qlearning", st["paso_mejor"])
+    print(f"  Mejor tabla: episodio de Q-learning {st['paso_mejor']} · {st['metricas']}")
+    punto.borrar()   # terminó: el punto de guardado ya no hace falta
     return ag, historia
