@@ -42,7 +42,7 @@ perturbaciones. Además construimos el ciclo completo para que cada resultado se
 | Modelo recomendado | `ppo-modelo-v5-s1`: red neuronal PPO, versión 5, semilla 1 |
 | Resultado en el test reservado | 100 % de vueltas en seco (68.6 s), 100 % con lluvia (89.3 s), 99.9 % en 19 pruebas extremas |
 | Segundo agente | `qlearning-modelo-qlearning-v8-s1`: tabla Q, 99 % en seco, 99 % con lluvia, 84.8 % en extremos |
-| ¿Memorizó Mónaco? | La v5-s1 sí: 0 % en el Puerto y en la Sierra (pista reservada). La `ppo-modelo-v6-pistas`, entrenada en tres pistas, completa las cuatro; es candidata (sección 7.7) |
+| ¿Memorizó Mónaco? | La v5-s1 sí: 0 % en el Puerto y en la Sierra (pista reservada). La `ppo-modelo-v6-pistas`, entrenada en tres pistas, completa las cuatro, pero **no pasa la selección**: cae en las pruebas extremas (79.2 % frente al mínimo de 85 %). Sección 7.7 |
 | Avance estimado frente a la rúbrica | Cerca del 91 % (estimación del equipo, no una medición) |
 | Lo que más falta | Datos del equipo, respuestas del docente y ensayo |
 | Web pública | https://autonomous-rally.vercel.app (simula en vivo en `/api` desde el 6 de noviembre) |
@@ -401,6 +401,12 @@ La v5-s1 memorizó Mónaco. El control también completa la Sierra, así que lo 
 afinar con PPO sin memorizar: la v6 es 11 % más rápida que el control. Límite: una semilla por modelo. Detalle en
 [experimentos/v6-pistas.md](experimentos/v6-pistas.md).
 
+**La v6 no se promueve.** Con el protocolo oficial (`dvc repro -s evaluar` y `-s generalizacion`, y después
+`rally seleccionar`) da 100 % en la ficha, pero en las 19 pruebas extremas promedia 79.2 % (mínimo 85 %) y su
+peor prueba, diluvio, da 0 % (mínimo 50 %). También cae en límite de lluvia (14 %), pista angosta en seco (5 %) y
+sensores cortos con lluvia (0 %). La v5-s1 daba 99.9 %. Generalizar a pistas nuevas no vino gratis: la v6 perdió
+robustez ante condiciones extremas. El recomendado sigue siendo `ppo-modelo-v5-s1`.
+
 ---
 
 ## 8. El ciclo de MLOps, pieza por pieza
@@ -727,9 +733,8 @@ que PPO v5 con 3 millones de pasos tarda varias horas.
 | Rotar los tokens de Hugging Face y DagsHub | Kevin | Media | — |
 | Reactivar el Turbo del procesador cuando no se entrene | Kevin | Baja | — |
 | Ensayar la sustentación: cada integrante debe explicar ambiente, versionamiento y despliegue | Todos | Alta | — |
-| Decidir si se promueve la v6 con `rally seleccionar` (sin `dvc repro`: ver la bitácora del 10 de noviembre) | Kevin | Alta | — |
-| Publicar en Vercel desde el fork el selector de pista y los arreglos de celular | Kevin | Alta | Unir los PR #4 y #5 |
-| Si se promueve la v6: pull request en Hugging Face | Miguel abre, Kevin aprueba | Media | Decisión anterior |
+| Publicar en Vercel desde el fork los arreglos de celular | Kevin | Media | Unir el PR #5 |
+| Medir si la caída de la v6 en extremos viene de las tres pistas o del entrenamiento en el Mac (control con las mismas pruebas) | Miguel | Media | — |
 
 **Lo técnico está terminado y publicado.** Lo que falta son las respuestas del docente y los datos del equipo.
 
@@ -740,6 +745,8 @@ que PPO v5 con 3 millones de pasos tarda varias horas.
 - **La v5-s1, que es la recomendada, memorizó Mónaco:** da 0 % en el Puerto y en la Sierra. La v6 completa las
   cuatro pistas, pero las cuatro salen del mismo generador (rectas y arcos de radio constante) y entrenamos una sola
   semilla por modelo; la v5 y la v5-s1 muestran que la semilla puede cambiar el resultado en una pista nueva.
+- **No tenemos un modelo que haga las dos cosas.** La v5-s1 aguanta las condiciones extremas pero no pistas nuevas;
+  la v6 maneja pistas nuevas pero cae en diluvio, pista angosta y sensores cortos. Por eso no se promovió.
 - **Las 19 pruebas extremas cambian una condición a la vez.** Combinadas, el modelo falla: con diluvio y
   aceleración 6 completó 1 de 3 vueltas, y con todos los deslizadores al extremo (pista de 6 m, μ 0.4, aceleración
   6 y sensores de 10 m), 0 de 3. Medido el 3 de noviembre en la API local. Si el docente prueba eso en la web, va a
@@ -848,6 +855,7 @@ debe poder explicar lo que se hizo.
 | ¿Qué pasa si falla en producción? | Monitoreo en la API, criterios y rollback | `/api/monitoreo`, `historial.json` |
 | ¿Cuál es la principal limitación? | Pocas pistas, del mismo generador, y una semilla por modelo en la v6 | Sección 15 |
 | ¿El modelo memorizó la pista? | La v5-s1 sí (0 % en Puerto y Sierra); la v6 no. La Sierra se corrió una sola vez | Sección 7.7, `metrics/sierra-v6.json` |
+| ¿Por qué no promovieron la v6? | Generaliza a pistas nuevas pero cae en las pruebas extremas: 79.2 % frente al mínimo de 85 % | `metrics/generalizacion.json`, `rally seleccionar` |
 | ¿Por qué Prefect? | Es Python, corre local sin servidor y deja evidencia por etapa | `pipelines/flujo.py` |
 | ¿Qué harían después? | Más semillas de la v6 y del control, y pistas generadas al azar | `docs/experimentos/v6-pistas.md` |
 
