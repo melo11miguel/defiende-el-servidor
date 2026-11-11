@@ -4,7 +4,8 @@
 funciona todo, qué hicimos día por día, qué resultados hay, dónde está cada cosa, qué falta y cómo responder las
 preguntas de la sustentación. Si después de leerlo te queda una duda, revisa la sección 16, de preguntas frecuentes.
 
-Última actualización: 5 de noviembre de 2026, sobre el commit `97c1dc4` de `main` más los cambios de la API en Vercel.
+Última actualización: 10 de noviembre de 2026, sobre el commit `155173e` de `main` (experimento v6 de pistas y
+selector de pista en la web).
 
 ## Contenido
 
@@ -41,11 +42,12 @@ perturbaciones. Además construimos el ciclo completo para que cada resultado se
 | Modelo recomendado | `ppo-modelo-v5-s1`: red neuronal PPO, versión 5, semilla 1 |
 | Resultado en el test reservado | 100 % de vueltas en seco (68.6 s), 100 % con lluvia (89.3 s), 99.9 % en 19 pruebas extremas |
 | Segundo agente | `qlearning-modelo-qlearning-v8-s1`: tabla Q, 99 % en seco, 99 % con lluvia, 84.8 % en extremos |
+| ¿Memorizó Mónaco? | La v5-s1 sí: 0 % en el Puerto y en la Sierra (pista reservada). La `ppo-modelo-v6-pistas`, entrenada en tres pistas, completa las cuatro; es candidata (sección 7.7) |
 | Avance estimado frente a la rúbrica | Cerca del 91 % (estimación del equipo, no una medición) |
 | Lo que más falta | Datos del equipo, respuestas del docente y ensayo |
 | Web pública | https://autonomous-rally.vercel.app (simula en vivo en `/api` desde el 6 de noviembre) |
-| Pruebas automáticas | 60 (59 pasan y 1 se activa cuando existe el paquete de Vercel) |
-| Versiones de modelos con manifiesto | 16 |
+| Pruebas automáticas | 85 |
+| Versiones de modelos con manifiesto | 17 |
 
 **Nota sobre el nombre:** el repositorio se llama `defiende-el-servidor` porque empezó con otro proyecto. Ese plan
 quedó guardado en [antecedentes/](antecedentes/defiende-el-servidor.md) y ya no aplica. Todo lo actual es
@@ -382,6 +384,23 @@ perder más de 5 puntos ni subir más de 5 % su tiempo. PPO v5 semilla 1 cumple 
 
 El agente final le gana en tiempo al piloto que le enseñó: 12 s en seco y 14 s con lluvia.
 
+### 7.7 Pistas nuevas: ¿aprendió a manejar o memorizó Mónaco?
+
+Agregamos tres circuitos: Bosque (rápido, sentido horario), Puerto (técnico) y Sierra (**reservada**: ningún modelo
+entrena en ella y se corrió una sola vez). Entrenamos en el Mac de Miguel la v6 (Mónaco, Bosque y Puerto) y un
+control solo con Mónaco, con la misma configuración y semilla. La regla de elección se fijó antes de ver resultados.
+
+| Seco / lluvia | Mónaco | Puerto | Sierra (reservada) |
+|---|---|---|---|
+| Maestro | 100 / 100 | 100 / 100 | 100 / 100 |
+| v5-s1 (recomendada) | 100 / 100 | **0 / 0** | **0 / 0** |
+| Control, solo Mónaco | 100 / 100 · 79.6 s | 100 / 100 | 100 / 100 · 77.3 s |
+| **v6, tres pistas** | 100 / 100 · 69.8 s | 100 / 100 | **100 / 100 · 68.8 s** |
+
+La v5-s1 memorizó Mónaco. El control también completa la Sierra, así que lo que aportan las tres pistas es poder
+afinar con PPO sin memorizar: la v6 es 11 % más rápida que el control. Límite: una semilla por modelo. Detalle en
+[experimentos/v6-pistas.md](experimentos/v6-pistas.md).
+
 ---
 
 ## 8. El ciclo de MLOps, pieza por pieza
@@ -551,7 +570,9 @@ documentación, así que la web publicada está al día.
 - **Paneles:** Telemetría, Registro de experimentos y Aprendizaje.
 - **Controles:** espacio pausa, R reinicia, flechas avanzan o retroceden 2 s, H oculta paneles, Esc cierra el
   resultado. Velocidad ½×, 1×, 2× y 4×. Calidad Auto, Alta, Media o Baja.
-- **Catálogo de modelos:** lista las 16 versiones con su hipótesis, decisión, ambiente y SHA-256; permite cargar,
+- **Pista:** selector Mónaco, Bosque o Puerto (o `?pista=bosque` en la URL). La Sierra no se ofrece: es la prueba
+  reservada y la API responde 403.
+- **Catálogo de modelos:** lista las 17 versiones con su hipótesis, decisión, ambiente y SHA-256; permite cargar,
   evaluar y comparar modelos, y muestra el monitoreo.
 
 ### 9.2 Modo replay y modo en vivo
@@ -706,6 +727,9 @@ que PPO v5 con 3 millones de pasos tarda varias horas.
 | Rotar los tokens de Hugging Face y DagsHub | Kevin | Media | — |
 | Reactivar el Turbo del procesador cuando no se entrene | Kevin | Baja | — |
 | Ensayar la sustentación: cada integrante debe explicar ambiente, versionamiento y despliegue | Todos | Alta | — |
+| Decidir si se promueve la v6 con `rally seleccionar` (sin `dvc repro`: ver la bitácora del 10 de noviembre) | Kevin | Alta | — |
+| Publicar en Vercel desde el fork el selector de pista y los arreglos de celular | Kevin | Alta | Unir los PR #4 y #5 |
+| Si se promueve la v6: pull request en Hugging Face | Miguel abre, Kevin aprueba | Media | Decisión anterior |
 
 **Lo técnico está terminado y publicado.** Lo que falta son las respuestas del docente y los datos del equipo.
 
@@ -713,8 +737,9 @@ que PPO v5 con 3 millones de pasos tarda varias horas.
 
 ## 15. Límites que hay que decir en la sustentación
 
-- **Hay un solo circuito.** Medimos robustez ante condiciones, no manejo en una pista desconocida. Es la limitación
-  más importante; la siguiente hipótesis sería entrenar en pistas generadas al azar y medir en una reservada.
+- **La v5-s1, que es la recomendada, memorizó Mónaco:** da 0 % en el Puerto y en la Sierra. La v6 completa las
+  cuatro pistas, pero las cuatro salen del mismo generador (rectas y arcos de radio constante) y entrenamos una sola
+  semilla por modelo; la v5 y la v5-s1 muestran que la semilla puede cambiar el resultado en una pista nueva.
 - **Las 19 pruebas extremas cambian una condición a la vez.** Combinadas, el modelo falla: con diluvio y
   aceleración 6 completó 1 de 3 vueltas, y con todos los deslizadores al extremo (pista de 6 m, μ 0.4, aceleración
   6 y sensores de 10 m), 0 de 3. Medido el 3 de noviembre en la API local. Si el docente prueba eso en la web, va a
@@ -821,9 +846,10 @@ debe poder explicar lo que se hizo.
 | ¿Cómo evitan sobreajustar a la evaluación? | Semillas de entrenamiento distintas, pruebas extremas, tres semillas y test reservado de una sola corrida | `metrics/test-final.json` |
 | ¿Qué fue lo más difícil? | La lluvia extrema; la causa era física, no de aprendizaje | Sección 6.1 |
 | ¿Qué pasa si falla en producción? | Monitoreo en la API, criterios y rollback | `/api/monitoreo`, `historial.json` |
-| ¿Cuál es la principal limitación? | Un solo circuito | Sección 15 |
+| ¿Cuál es la principal limitación? | Pocas pistas, del mismo generador, y una semilla por modelo en la v6 | Sección 15 |
+| ¿El modelo memorizó la pista? | La v5-s1 sí (0 % en Puerto y Sierra); la v6 no. La Sierra se corrió una sola vez | Sección 7.7, `metrics/sierra-v6.json` |
 | ¿Por qué Prefect? | Es Python, corre local sin servidor y deja evidencia por etapa | `pipelines/flujo.py` |
-| ¿Qué harían después? | Pistas aleatorias y una pista reservada | Informe, última sección |
+| ¿Qué harían después? | Más semillas de la v6 y del control, y pistas generadas al azar | `docs/experimentos/v6-pistas.md` |
 
 ---
 
