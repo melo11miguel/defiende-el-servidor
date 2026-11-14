@@ -257,3 +257,9 @@ Registro cronológico de decisiones, fallos y correcciones. Los commits de git t
   flanco y piloto con casco decorado y deslizadores en las rodillas.
 - Las medidas del simulador no cambian (largo, ejes, radio de llanta): es solo dibujo. Probado en Chrome con lluvia,
   túnel, curva con inclinación y sonido: sin excepciones, ~30 FPS como antes.
+
+## 14 nov 2026 — la tabla Q de la moto ya está en DagsHub
+
+- Allison subió `models/moto/qlearning` con `dvc push -r dagshub`. Comprobado desde otro computador: `dvc pull`
+  baja la tabla, su SHA-256 es `f2690f33…`, el mismo del manifiesto `qlearning-moto-v1.json`, y `dvc status` de
+  la moto queda al día. Todos los modelos del catálogo se pueden recuperar desde DagsHub.

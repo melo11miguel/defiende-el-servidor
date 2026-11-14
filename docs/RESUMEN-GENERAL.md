@@ -48,7 +48,7 @@ perturbaciones. Además construimos el ciclo completo para que cada resultado se
 | ¿Memorizó Mónaco? | La v5-s1 sí: 0 % en el Puerto y en la Sierra (pista reservada) |
 | Experimento más reciente | `ppo-modelo-v6-pistas`: entrenada en tres pistas, maneja en una pista que nunca vio (100 %), pero **no pasa la selección**: cae en condiciones extremas de Mónaco (sección 7.7) |
 | Segundo vehículo | Moto MotoGP (`AutonomousRallyMoto-v0`): mismo circuito, física de inclinación y caída. Recomendada `ppo-moto-v1`: 100 % en seco (78.2 s) y 100 % con lluvia (110.0 s) |
-| Avance estimado frente a la rúbrica | Cerca del 97 % (estimación del equipo, no una medición) |
+| Avance estimado frente a la rúbrica | Cerca del 96 % (estimación del equipo, no una medición). Lo que falta es de la sustentación |
 | Lo que más falta | Ensayo, nombre del equipo y contribuciones, y respuestas del docente |
 | Web pública | https://autonomous-rally.vercel.app (simula en vivo en `/api`; selector de pista desde el 10 de noviembre) |
 | Pruebas automáticas | 109, todas pasan. Las de la API se saltaban en CI porque faltaba `httpx` en `requirements.txt`; desde el 11 de noviembre corren |
@@ -974,8 +974,6 @@ docente.
   llevó a la v6.
 - **Las cuatro pistas son de la misma familia:** rectas y arcos de radio constante. La v6 tiene dos semillas (una
   pasa y otra no) y su control también.
-- **La tabla Q de la moto no está en DagsHub:** su manifiesto y su SHA-256 existen, pero `dvc pull` falla hasta que
-  se suba.
 - **Las 19 pruebas extremas cambian una condición a la vez.** Combinadas, el modelo falla: con diluvio y
   aceleración 6 completó 1 de 3 vueltas, y con todos los deslizadores al extremo (pista de 6 m, μ 0.4, aceleración
   6 y sensores de 10 m), 0 de 3. Medido el 3 de noviembre en la API local. Si el docente prueba eso en la web, va a
