@@ -226,7 +226,6 @@ Por eso el modelo guardado es el del paso 200 004: el entrenador conserva el mej
   al maestro (80.8 s). Los criterios no premian el tiempo por debajo del máximo.
 - **Los criterios de selección solo miden Mónaco:** el control semilla 2 los cumpliría y no termina el Puerto.
   La generalización a otras pistas se juzgó aparte, en Bosque, Puerto y Sierra.
-- **La ficha no se intercambió con otro equipo:** la revisamos entre nosotros y con las pruebas automáticas.
 - **Tres semillas de la v6, de las cuales pasan dos:** la que falla es la única que afinó con PPO hasta el final;
   tres semillas no bastan para probar que esa sea la causa. La semilla 2 tampoco tiene prueba en una pista nueva.
   Cuatro pistas de la misma familia (rectas y arcos de radio constante).

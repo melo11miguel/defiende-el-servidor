@@ -90,7 +90,7 @@ con el ambiente compatible con ese modelo**.
 | Versionamiento y recuperación | 30 % | Completo | DagsHub pide iniciar sesión: la guía para el revisor explica cómo entrar con una cuenta gratuita, sin compartir contraseñas |
 | Diseño experimental y análisis | 25 % | Casi completo | Nada técnico; ensayar la explicación, incluida la v6 |
 | Pipeline, despliegue, monitoreo y rollback | 20 % | Completo | Nada técnico: `dvc status` limpio y el flujo de Prefect probado también con un rechazo |
-| Ambiente y agente | 10 % | Completo | La ficha no se intercambió con otro equipo (dicho en los límites del informe) |
+| Ambiente y agente | 10 % | Completo | Ficha intercambiada con otro equipo |
 | Defensa, informe y presentación | 15 % | Material listo | Ensayo |
 
 ### 3.2 Requisito por requisito
@@ -966,8 +966,8 @@ Todo se entrenó en el portátil de Kevin, con WSL Ubuntu en Windows.
 | Rotar los tokens de Hugging Face y DagsHub después de la entrega | Kevin | Media |
 
 Ya hecho: el veredicto de selección en [experimentos/v6-pistas.md](experimentos/v6-pistas.md), las tres semillas
-de la v6 y del control, el nombre del equipo y las contribuciones, y el informe y la presentación finales. La ficha no
-se intercambió con otro equipo; está dicho en los límites del informe.
+de la v6 y del control, el nombre del equipo y las contribuciones, el intercambio de la ficha con otro equipo, y el
+informe y la presentación finales.
 
 ---
 

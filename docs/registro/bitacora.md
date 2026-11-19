@@ -285,7 +285,8 @@ Registro cronológico de decisiones, fallos y correcciones. Los commits de git t
   v6. Se regeneraron con `rally.replays.generar`.
 - La guía para el revisor decía que todo era público sin cuenta; DagsHub pide iniciar sesión. Se corrigió y se
   explicó cómo entrar sin compartir contraseñas.
-- Informe: contexto de negocio, límites nuevos (criterios solo en Mónaco, ficha sin intercambio) y nota sobre los
+- Informe: contexto de negocio, límite nuevo (criterios solo en Mónaco) y nota sobre los
   autores de los commits de la moto. Presentación: valor del problema y versionamiento del ambiente y las
   configuraciones; PDF regenerado con texto seleccionable.
 - `pytest` recogía `scripts/analisis/test_final_npz.py` como prueba; ahora solo busca en `tests/`.
+- 19 nov: la ficha sí se intercambió con otro equipo; se quitó del informe la línea que decía lo contrario.
